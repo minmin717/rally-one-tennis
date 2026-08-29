@@ -34,7 +34,7 @@ export default function Home() {
 
   if (screen === "camera") return <Shell title="架机助手" onBack={back} dark>
     <div className="camera-stage">
-      <div className="court"><div className="baseline"/><div className="service"/><div className="net"/><div className="player">●<i/></div><div className={`phone ${side}`}>▮<span>手机</span></div></div>
+      <div className="court-wrap"><span className="court-caption">标准网球场 · 俯视图</span><div className="court"><div className="singles singles-left"/><div className="singles singles-right"/><div className="service service-far"/><div className="service service-near"/><div className="center-service"/><div className="net"/><div className="player">●<i/></div></div><div className={`phone ${side}`}><b>▯</b><span>手机</span></div></div>
       <div className="camera-ok"><i>✓</i><div><b>全身已入镜</b><span>机位适合分析 {focus}</span></div></div>
     </div>
     <div className="sheet">
