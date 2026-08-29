@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 type Dimension = "reward" | "growth" | "control" | "manager" | "team" | "energy" | "fit" | "readiness";
 type Sector = "bigtech" | "state" | "public" | "small" | "other";
+type Choice = { label: string; value: number };
 
 const dimensions: Record<Dimension, { label: string; color: string }> = {
   reward: { label: "回报匹配", color: "#e28431" }, growth: { label: "成长空间", color: "#278f75" },
@@ -21,35 +22,54 @@ const sectors: Record<Sector, { icon: string; name: string; hint: string; note: 
 };
 
 const questions: { text: string; dimension: Dimension; reverse?: boolean }[] = [
-  { text: "把投入的时间和压力算进去，我认可现在的收入与福利。", dimension: "reward" },
-  { text: "即使给我加薪20%，其他情况不变，我还是想离开。", dimension: "reward", reverse: true },
-  { text: "这份工作的回报，能覆盖我现阶段最重要的生活目标。", dimension: "reward" },
-  { text: "过去半年，我学到的能力换一个环境仍然有价值。", dimension: "growth" },
-  { text: "继续待一年，我能说清自己会多得到什么。", dimension: "growth" },
-  { text: "最近的工作大多只是重复，并没有让我更值钱。", dimension: "growth", reverse: true },
+  { text: "把全年现金、稳定福利、雇主缴纳、工作时长与通勤成本折算后，你的综合回报处于什么位置？", dimension: "reward" },
+  { text: "以过去三个月真实投入的总工时计算，你的有效时薪与同类机会相比如何？", dimension: "reward" },
+  { text: "扣除固定生活成本后，目前工作每月能留下多少可支配结余？", dimension: "reward" },
+  { text: "过去半年形成的成果，有多少能被下一家雇主直接识别和验证？", dimension: "growth" },
+  { text: "公司承诺的发展机会，有多少已经落实为项目、职责、职级或收入变化？", dimension: "growth" },
+  { text: "如果明年仍做相似工作，你在外部市场的议价能力预计会怎样变化？", dimension: "growth" },
   { text: "我能决定自己如何完成任务，而不只是被动执行。", dimension: "control" },
   { text: "面对明显不合理的要求，我可以提出调整。", dimension: "control" },
   { text: "工作经常侵入休息时间，我却很难拒绝。", dimension: "control", reverse: true },
-  { text: "直属领导能给出清晰目标和有效反馈。", dimension: "manager" },
-  { text: "我与领导之间的问题，仍然可以通过沟通改善。", dimension: "manager" },
+  { text: "过去三次重要任务中，直属领导有几次提前明确目标、权限和验收标准？", dimension: "manager" },
+  { text: "当你用事实提出资源或优先级问题后，领导的实际行为通常怎样变化？", dimension: "manager" },
   { text: "我常因领导的情绪或反复变化而内耗。", dimension: "manager", reverse: true },
-  { text: "我信任一起做事的同事，遇到问题能互相托底。", dimension: "team" },
+  { text: "过去半年，团队核心成员流失、长期空缺或频繁换方向的情况如何？", dimension: "team" },
   { text: "换到公司里的另一个团队，我愿意继续留下。", dimension: "team" },
   { text: "团队里的推诿、站队或低效协作让我疲惫。", dimension: "team", reverse: true },
-  { text: "下班后，我通常还有精力过自己的生活。", dimension: "energy" },
-  { text: "最近三个月，工作没有持续影响我的睡眠和情绪。", dimension: "energy" },
+  { text: "过去四周，工作导致睡眠、就医、运动或重要关系被持续牺牲的频率是？", dimension: "energy" },
+  { text: "休息两天或休假后，你的工作相关疲惫通常能恢复到什么程度？", dimension: "energy" },
   { text: "一想到明天要工作，我就会产生明显的抗拒。", dimension: "energy", reverse: true },
-  { text: "即使换一家公司，我仍愿意继续做同类工作。", dimension: "fit" },
-  { text: "我能看见这条职业路径与自己想要的生活有关。", dimension: "fit" },
+  { text: "去掉当前公司、领导和薪资因素，你是否仍愿意重复这个岗位最核心的日常？", dimension: "fit" },
+  { text: "这条职业路径在收入上限、城市选择和生活节奏上，与长期目标匹配多少？", dimension: "fit" },
   { text: "我想离开的不只是公司，而是整个职业方向。", dimension: "fit", reverse: true },
-  { text: "我已经开始了解外部机会、岗位或转型路径。", dimension: "readiness" },
-  { text: "如果短期没有收入，我有一段可承受的缓冲期。", dimension: "readiness" },
-  { text: "我想离开的念头已经持续超过三个月。", dimension: "readiness" },
+  { text: "你对外部市场的判断，建立在多少份真实岗位、面试或从业者信息上？", dimension: "readiness" },
+  { text: "扣除不可动用资金后，现金缓冲能覆盖多少个月的必要开支？", dimension: "readiness" },
+  { text: "除存款外，你为离开准备了哪些可验证的退出条件？", dimension: "readiness" },
 ];
+
+const evidenceChoices: Record<number, Choice[]> = {
+  0: [{label:"没有完整算过，只看月薪",value:1},{label:"算过年收入，但没折算时间与稳定福利",value:1},{label:"完整折算后，低于可比岗位约15%以上",value:0},{label:"完整折算后，接近或高于可比岗位",value:3}],
+  1: [{label:"没有记录工时，也没有可比数据",value:1},{label:"明显低于同经验同城市岗位",value:0},{label:"大致处于市场中间水平",value:2},{label:"高于市场，或时间自主性明显更好",value:3}],
+  2: [{label:"经常入不敷出或需要借贷",value:0},{label:"结余不足必要开支的10%",value:1},{label:"可结余必要开支的10%—30%",value:2},{label:"可稳定结余30%以上",value:3}],
+  3: [{label:"没有可展示成果",value:0},{label:"有经历，但很难量化或验证",value:1},{label:"有1—2项可验证成果",value:2},{label:"已有多项成果获得外部认可",value:3}],
+  4: [{label:"基本停留在口头承诺",value:0},{label:"偶尔给机会，但没有明确标准",value:1},{label:"部分兑现，路径基本清楚",value:2},{label:"持续兑现，且已有明确结果",value:3}],
+  5: [{label:"会下降：技能更封闭或过时",value:0},{label:"大概率不变",value:1},{label:"会积累一项可迁移能力",value:2},{label:"会形成稀缺能力或关键履历",value:3}],
+  9: [{label:"0次，主要靠事后猜测",value:0},{label:"1次",value:1},{label:"2次",value:2},{label:"3次都有明确约定",value:3}],
+  10: [{label:"没有变化，甚至产生负面后果",value:0},{label:"口头接受，但行动不变",value:1},{label:"部分问题得到调整",value:2},{label:"能稳定根据事实调整",value:3}],
+  12: [{label:"持续流失或长期缺人",value:0},{label:"有明显波动，原因不透明",value:1},{label:"偶有流动，不影响核心协作",value:2},{label:"核心团队稳定且能补位",value:3}],
+  15: [{label:"每周3次以上",value:0},{label:"每周1—2次",value:1},{label:"每月偶尔发生",value:2},{label:"几乎没有持续牺牲",value:3}],
+  16: [{label:"休息后仍无法恢复",value:0},{label:"只能短暂缓解",value:1},{label:"大部分可以恢复",value:2},{label:"可以充分恢复",value:3}],
+  18: [{label:"完全不愿意",value:0},{label:"只愿保留少部分工作内容",value:1},{label:"多数核心日常仍能接受",value:2},{label:"仍愿长期深耕",value:3}],
+  19: [{label:"三项都明显冲突",value:0},{label:"两项冲突",value:1},{label:"只有一项需要妥协",value:2},{label:"三项基本匹配",value:3}],
+  21: [{label:"主要来自想象或社交媒体",value:0},{label:"看过一些岗位，但未核实",value:1},{label:"核实过5份以上岗位或3位从业者",value:2},{label:"已有面试、offer或真实项目验证",value:3}],
+  22: [{label:"不足1个月",value:0},{label:"1—3个月",value:1},{label:"3—6个月",value:2},{label:"6个月以上",value:3}],
+  23: [{label:"还没有具体准备",value:0},{label:"只有模糊方向或简历",value:1},{label:"已有目标岗位、简历和行动计划",value:2},{label:"已有机会验证、缓冲资金和退出节点",value:3}],
+};
 
 const sectorQuestionText: Record<Sector, Record<number, string>> = {
   bigtech: {
-    0: "把绩效压力、加班和平台光环都算进去，我认可现在的薪酬回报。",
+    0: "把奖金/股权兑现、雇主缴纳、加班与通勤折算后，你的综合回报处于同级别岗位什么位置？",
     4: "继续留在当前业务一年，我还能获得可迁移的项目与能力增量。",
     8: "突发需求和即时响应经常侵入休息时间，我却很难拒绝。",
     9: "直属领导能给出稳定的绩效预期，而不是临近评估才改变标准。",
@@ -59,7 +79,7 @@ const sectorQuestionText: Record<Sector, Record<number, string>> = {
     21: "我已经开始了解外部级别、薪酬区间和真实岗位机会。",
   },
   state: {
-    0: "把稳定性、福利和晋升速度都算进去，我认可当前的综合回报。",
+    0: "把奖金、补贴、稳定福利、雇主缴纳和实际工时折算后，你的综合回报处于可比岗位什么位置？",
     4: "沿着现有发展通道再留一年，我能看到明确的能力或职级增长。",
     8: "流程、汇报和临时协调经常侵入个人时间，我却很难调整。",
     9: "直属领导能明确分工和评价标准，不会让我反复猜测。",
@@ -69,7 +89,7 @@ const sectorQuestionText: Record<Sector, Record<number, string>> = {
     21: "我已经了解内部竞聘、调岗与外部求职的真实成本。",
   },
   public: {
-    0: "把编制/身份、稳定性和收入上限都算进去，我认可当前的综合回报。",
+    0: "把身份保障、雇主缴纳、补贴、收入上限与实际工时折算后，你的综合回报处于什么位置？",
     4: "按现有路径再留一年，我能看到专业能力或发展空间的增长。",
     8: "临时事务、人情协调或隐形要求经常侵入生活，我却很难拒绝。",
     9: "直属领导的任务安排和评价方式相对清晰、稳定。",
@@ -79,7 +99,7 @@ const sectorQuestionText: Record<Sector, Record<number, string>> = {
     21: "我已经认真核算过离开身份、地点与家庭预期的现实成本。",
   },
   small: {
-    0: "把职责扩张、业务风险和成长速度都算进去，我认可当前回报。",
+    0: "把奖金兑现、潜在股权、业务风险、职责范围与实际工时折算后，你的综合回报处于什么位置？",
     4: "即使公司变化很快，我仍能持续积累可迁移的核心能力。",
     8: "因为人少事多，我经常无边界地承接职责外任务。",
     9: "创始人或直属领导的方向相对稳定，承诺与行动基本一致。",
@@ -89,7 +109,7 @@ const sectorQuestionText: Record<Sector, Record<number, string>> = {
     21: "我已经了解公司现金流、业务前景和外部同类岗位机会。",
   },
   other: {
-    0: "把获客成本、收入波动和时间自由都算进去，我认可当前回报。",
+    0: "扣除获客、设备、空档期和保障成本，再折算实际工时后，你的净回报处于什么位置？",
     4: "继续当前工作方式一年，我能积累更稳定的客户、作品或能力。",
     8: "客户消息和项目节点经常侵入休息时间，我却很难设定边界。",
     9: "主要客户或合作方能给出相对明确、稳定的需求与反馈。",
@@ -116,13 +136,14 @@ const strategies = {
   rethink: { icon: "🧭", name: "方向重估型", decision: "先重估职业方向，不要只是复制一份相似的工作", target: "职业方向与长期生活方式", intro: "你想逃离的可能不是某家公司，而是这类工作的核心日常。直接跳到同类岗位，很可能重复现在的困境。", actions: ["写下你想离开的具体日常，而不是笼统写“不喜欢”", "盘点三项可迁移能力和三种愿意尝试的工作场景", "用访谈与短项目验证方向，再制定6个月转型计划"] },
 };
 
-const options = ["很不符合", "不太符合", "比较符合", "非常符合"];
+const options: Choice[] = [{label:"很不符合",value:0},{label:"不太符合",value:1},{label:"比较符合",value:2},{label:"非常符合",value:3}];
 
 export default function Home() {
   const [stage, setStage] = useState<"landing" | "sector" | "quiz" | "result">("landing");
   const [sector, setSector] = useState<Sector | null>(null);
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<number[]>([]);
+  const [choiceIndexes, setChoiceIndexes] = useState<number[]>([]);
 
   const activeQuestions = useMemo(() => questions.map((question, index) => ({
     ...question,
@@ -150,11 +171,12 @@ export default function Home() {
   })() as keyof typeof strategies;
   const result = strategies[strategyKey];
 
-  function answer(value: number) {
+  function answer(value: number, choiceIndex: number) {
     const next = [...answers]; next[current] = value; setAnswers(next);
+    const nextIndexes = [...choiceIndexes]; nextIndexes[current] = choiceIndex; setChoiceIndexes(nextIndexes);
     if (current === activeQuestions.length - 1) setStage("result"); else setCurrent(current + 1);
   }
-  function restart() { setStage("landing"); setSector(null); setCurrent(0); setAnswers([]); }
+  function restart() { setStage("landing"); setSector(null); setCurrent(0); setAnswers([]); setChoiceIndexes([]); }
   async function share() {
     if (!sector) return;
     const canvas = document.createElement("canvas");
@@ -209,7 +231,8 @@ export default function Home() {
 
   if (stage === "quiz") {
     const progress = Math.round(((current + 1) / activeQuestions.length) * 100);
-    return <main className="page quiz-page"><header className="quiz-header"><button className="back" onClick={()=>current?setCurrent(current-1):setStage("sector")}>←</button><span>{current+1} / {activeQuestions.length}</span><b>{progress}%</b></header><div className="progress"><i style={{width:`${progress}%`}} /></div><section className="question-card"><div className="question-number">{sector && sectors[sector].name} · QUESTION {String(current+1).padStart(2,"0")}</div><h1>{activeQuestions[current].text}</h1><p>按过去三个月的真实感受作答，不用选“应该怎样”。</p><div className="options">{options.map((option,index)=><button className={answers[current]===index?"selected":""} key={option} onClick={()=>answer(index)}><span>{String.fromCharCode(65+index)}</span>{option}</button>)}</div></section></main>;
+    const currentOptions = evidenceChoices[current] ?? options;
+    return <main className="page quiz-page"><header className="quiz-header"><button className="back" onClick={()=>current?setCurrent(current-1):setStage("sector")}>←</button><span>{current+1} / {activeQuestions.length}</span><b>{progress}%</b></header><div className="progress"><i style={{width:`${progress}%`}} /></div><section className="question-card"><div className="question-number">{sector && sectors[sector].name} · QUESTION {String(current+1).padStart(2,"0")}</div><h1>{activeQuestions[current].text}</h1><p>{evidenceChoices[current] ? "尽量依据真实记录或可验证信息作答；不确定也是一种重要信号。" : "按过去三个月反复出现的事实作答，不用选“应该怎样”。"}</p><div className="options">{currentOptions.map((option,index)=><button className={choiceIndexes[current]===index?"selected":""} key={option.label} onClick={()=>answer(option.value,index)}><span>{String.fromCharCode(65+index)}</span>{option.label}</button>)}</div></section></main>;
   }
 
   if (stage === "sector") return <main className="page sector-page"><header className="quiz-header"><button className="back" onClick={()=>setStage("landing")}>←</button><span>第一步</span><b>环境分流</b></header><section className="sector-head"><div className="question-number">先校准你的工作环境</div><h1>你目前更接近哪种职场？</h1><p>同样是“想辞职”，在大厂、国企和体制内的机会成本完全不同。这个选择会影响最终建议。</p></section><div className="sector-options">{(Object.keys(sectors) as Sector[]).map(key=><button key={key} onClick={()=>{setSector(key);setStage("quiz")}}><i>{sectors[key].icon}</i><div><b>{sectors[key].name}</b><span>{sectors[key].hint}</span></div><strong>→</strong></button>)}</div></main>;
