@@ -77,7 +77,7 @@ export default function Home() {
   return <main className="home">
     <header><div className="logo">RALLY<span>·</span>ONE</div><button className="avatar">楠</button></header>
     <section className="welcome"><span>周日 · 适合练球</span><h1>一个人练，<br/>也有人<span>看得懂你。</span></h1><p>架好手机，放心去打。每一拍的问题、根因和改法，练完就知道。</p><button className="hero-cta" onClick={()=>setScreen("setup")}><span>＋</span><div><b>开始一次训练</b><small>约 30 秒完成架机</small></div><i>→</i></button></section>
-    <section className="how"><div className="section-label">HOW IT WORKS</div>{steps.map((x,i)=><article key={x.n}><b>{x.n}</b><div><h3>{x.title}</h3><p>{x.sub}</p></div><i>{["⌗","●","↗"][i]}</i></article>)}</section>
+    <section className="how"><div className="section-label">HOW IT WORKS</div>{steps.map((x,i)=><button className="how-step" key={x.n} onClick={()=>setScreen((["camera","recording","analysis"] as Screen[])[i])} aria-label={`进入${x.title}`}><b>{x.n}</b><div><h3>{x.title}</h3><p>{x.sub}</p></div><i>{["⌗","●","↗"][i]}</i></button>)}</section>
     <section className="last"><div><span>上次训练 · 8月27日</span><h2>正手击球点</h2><p><b>＋9</b> 稳定性提升</p></div><button onClick={()=>setScreen("analysis")}>查看复盘 →</button></section>
     <nav><button className="active">⌂<span>训练</span></button><button onClick={()=>setScreen("analysis")}>▥<span>复盘</span></button><button>◒<span>进步</span></button><button>♙<span>我的</span></button></nav>
   </main>;
