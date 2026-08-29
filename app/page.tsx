@@ -41,7 +41,7 @@ export default function Home() {
   if (screen === "camera") return <Shell title="架机助手" onBack={back} dark>
     <div className="camera-stage">
       <div className="court-wrap"><span className="court-caption">标准网球场 · 俯视图</span><div className="court"><div className="singles singles-left"/><div className="singles singles-right"/><div className="service service-far"/><div className="service service-near"/><div className="center-service"/><div className="net"/><div className="player"><span className="head"/><span className="body"/><span className="arms"/><span className="legs"/><em>击球者</em></div></div><div className={`phone ${side}`}><b>▯</b><span>手机</span></div></div>
-      <div className="camera-ok pending"><i>1</i><div><b>先按图摆好手机</b><span>下一步进入取景画面，再判断是否全身入镜</span></div></div>
+      <div className="camera-ok pending"><i>1</i><div><b>按图放到推荐位置</b><span>确认手机稳定、镜头无遮挡即可开始</span></div></div>
     </div>
     <div className="sheet">
       <div className="sheet-handle"/>
@@ -49,14 +49,15 @@ export default function Home() {
       <h2>{cameraGuides[side].title}</h2>
       <div className="measurements"><div><b>{cameraGuides[side].distance}</b><span>距底线 / 击球区</span></div><div><b>{cameraGuides[side].height}</b><span>镜头高度</span></div><div><b>{cameraGuides[side].lens}</b><span>推荐镜头</span></div></div>
       <p className="tip"><b>{side}机位怎么摆</b>{cameraGuides[side].note}</p>
-      <button className="cta" onClick={()=>setScreen("check")}>打开相机，检查是否入镜 <b>→</b></button>
+      <button className="cta" onClick={()=>setScreen("recording")}>放好手机了，开始训练 <b>●</b></button>
+      <button className="test-shot" onClick={()=>setScreen("check")}>不确定画面？先试拍 3 秒检查 <span>可跳过</span></button>
     </div>
   </Shell>;
 
   if (screen === "check") return <main className="recording preflight">
-    <div className="rec-top"><button onClick={()=>setScreen("camera")}>←</button><span>入镜检查</span><b>{side}机位</b></div>
-    <div className="viewfinder"><div className="frame-guide"><span>头部</span><i/><b>双脚需在框内</b></div><div className="check-card"><i>2</i><div><b>请站到击球位置</b><span>确保头顶、球拍和双脚都在画面内</span></div></div></div>
-    <div className="check-actions"><p>手机摆好后，再由画面判断是否全身入镜</p><button onClick={()=>setScreen("recording")}>✓ 我已全身入镜，开始录制</button></div>
+    <div className="rec-top"><button onClick={()=>setScreen("camera")}>←</button><span>3 秒试拍</span><b>{side}机位</b></div>
+    <div className="viewfinder"><div className="frame-guide"><span>头部</span><i/><b>双脚需在框内</b></div><div className="check-card"><i>3</i><div><b>站到击球区，挥拍一次</b><span>试拍结束后自动确认人物是否完整入镜</span></div></div></div>
+    <div className="check-actions"><p>这是可选步骤，不影响直接开始训练</p><button onClick={()=>setScreen("recording")}>开始 3 秒试拍</button><button className="skip-check" onClick={()=>setScreen("recording")}>跳过，直接开始训练</button></div>
   </main>;
 
   if (screen === "recording") return <main className="recording">
