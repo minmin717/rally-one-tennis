@@ -100,7 +100,7 @@ export default function Home() {
   async function share() {
     if (!sector) return;
     const canvas = document.createElement("canvas");
-    canvas.width = 1080; canvas.height = 1440;
+    canvas.width = 1080; canvas.height = 2460;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const roundRect = (x:number,y:number,w:number,h:number,r:number,fill:string) => { ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fillStyle=fill; ctx.fill(); };
@@ -109,7 +109,7 @@ export default function Home() {
       for (const char of chars) { const next=row+char; if(ctx.measureText(next).width>max){ctx.fillText(row,x,y+n*line);row=char;n++;if(n>=maxLines)return y+n*line;}else row=next; }
       if(row&&n<maxLines)ctx.fillText(row,x,y+n*line); return y+(n+1)*line;
     };
-    const gradient=ctx.createLinearGradient(0,0,1080,1440); gradient.addColorStop(0,"#fff4e8");gradient.addColorStop(1,"#f3eadc");ctx.fillStyle=gradient;ctx.fillRect(0,0,1080,1440);
+    const gradient=ctx.createLinearGradient(0,0,1080,2460); gradient.addColorStop(0,"#fff4e8");gradient.addColorStop(1,"#f3eadc");ctx.fillStyle=gradient;ctx.fillRect(0,0,1080,2460);
     ctx.fillStyle="#20201f";ctx.font="800 28px Arial, sans-serif";ctx.fillText("CAREER DECISION LAB",72,78);
     ctx.fillStyle="#ff5b3d";ctx.font="700 25px Arial, sans-serif";ctx.fillText(`${sectors[sector].name} · 职场去留定位`,72,140);
     ctx.fillStyle="#20201f";ctx.font="900 82px Arial, sans-serif";ctx.fillText(result.name,72,255);
@@ -117,11 +117,15 @@ export default function Home() {
     roundRect(72,420,936,245,32,"#20201f");ctx.fillStyle="#c9c0b6";ctx.font="700 25px Arial, sans-serif";ctx.fillText("离职倾向指数",112,475);
     ctx.fillStyle="#ff684b";ctx.font="900 112px Arial, sans-serif";ctx.fillText(String(departure),112,590);ctx.font="800 34px Arial, sans-serif";ctx.fillText("%",250,588);
     ctx.fillStyle="#ffffff";ctx.font="700 28px Arial, sans-serif";ctx.fillText("真正需要改变",500,490);ctx.font="900 44px Arial, sans-serif";wrap(result.target,500,555,430,55,2);
-    ctx.fillStyle="#20201f";ctx.font="900 32px Arial, sans-serif";ctx.fillText("你的三大消耗来源",72,745);
-    drains.slice(0,3).forEach((key,i)=>{const y=785+i*125;roundRect(72,y,936,100,22,"#fffaf4");ctx.fillStyle="#ff5b3d";ctx.font="800 24px Arial, sans-serif";ctx.fillText(`0${i+1}`,102,y+59);ctx.fillStyle="#20201f";ctx.font="900 31px Arial, sans-serif";ctx.fillText(drainCopy[key].name,175,y+60);ctx.textAlign="right";ctx.fillText(String(scores[key]),960,y+60);ctx.textAlign="left";});
-    ctx.fillStyle="#20201f";ctx.font="900 32px Arial, sans-serif";ctx.fillText("接下来先做这三件事",72,1190);
-    ctx.font="600 24px Arial, sans-serif";ctx.fillStyle="#5f574f";result.actions.forEach((x,i)=>wrap(`${i+1}. ${x}`,72,1240+i*55,920,34,1));
-    ctx.fillStyle="#8a8177";ctx.font="500 21px Arial, sans-serif";ctx.fillText("结果用于职业自我探索 · 长按保存图片分享",72,1390);
+    ctx.fillStyle="#20201f";ctx.font="900 32px Arial, sans-serif";ctx.fillText("7项去留判断依据",72,735);
+    healthKeys.forEach((key,i)=>{const y=775+i*72;ctx.fillStyle="#514a44";ctx.font="700 23px Arial, sans-serif";ctx.fillText(dimensions[key].label,72,y);ctx.textAlign="right";ctx.fillText(String(scores[key]),1008,y);ctx.textAlign="left";roundRect(265,y-19,670,18,9,"#e5ddd3");roundRect(265,y-19,Math.max(18,670*scores[key]/100),18,9,dimensions[key].color);});
+    ctx.fillStyle="#20201f";ctx.font="900 32px Arial, sans-serif";ctx.fillText("你的三大消耗来源",72,1320);
+    drains.slice(0,3).forEach((key,i)=>{const y=1360+i*145;roundRect(72,y,936,120,22,"#fffaf4");ctx.fillStyle="#ff5b3d";ctx.font="800 22px Arial, sans-serif";ctx.fillText(`0${i+1}`,102,y+52);ctx.fillStyle="#20201f";ctx.font="900 29px Arial, sans-serif";ctx.fillText(drainCopy[key].name,170,y+52);ctx.fillStyle="#6d655e";ctx.font="500 20px Arial, sans-serif";wrap(drainCopy[key].text,170,y+85,690,27,1);ctx.fillStyle="#20201f";ctx.font="900 29px Arial, sans-serif";ctx.textAlign="right";ctx.fillText(String(scores[key]),960,y+52);ctx.textAlign="left";});
+    roundRect(72,1810,936,150,26,"#eaf8f1");ctx.fillStyle="#397666";ctx.font="700 21px Arial, sans-serif";ctx.fillText("还值得保留的部分",108,1855);ctx.fillStyle="#20201f";ctx.font="900 35px Arial, sans-serif";ctx.fillText(keeps.map(k=>dimensions[k].label).join(" · "),108,1905);ctx.fillStyle="#645e57";ctx.font="500 20px Arial, sans-serif";ctx.fillText("下一步选择时，也要把这些优势带进新方案。",108,1940);
+    ctx.fillStyle="#20201f";ctx.font="900 32px Arial, sans-serif";ctx.fillText("未来30天行动清单",72,2035);
+    ctx.font="600 22px Arial, sans-serif";ctx.fillStyle="#5f574f";result.actions.forEach((x,i)=>{roundRect(72,2070+i*78,42,42,12,"#ff5b3d");ctx.fillStyle="#fff";ctx.font="800 19px Arial, sans-serif";ctx.fillText(String(i+1),87,2098+i*78);ctx.fillStyle="#5f574f";ctx.font="600 22px Arial, sans-serif";wrap(x,135,2098+i*78,850,30,2);});
+    roundRect(72,2320,936,82,20,"#fff0e8");ctx.fillStyle="#8a4c35";ctx.font="700 21px Arial, sans-serif";ctx.fillText("次要耗电类型",102,2370);ctx.fillStyle="#20201f";ctx.font="900 27px Arial, sans-serif";ctx.fillText(drainCopy[drains[0]].name,285,2370);
+    ctx.fillStyle="#8a8177";ctx.font="500 18px Arial, sans-serif";ctx.fillText("结果用于职业自我探索，不替代劳动法律、医疗或心理专业意见。",72,2435);
     const blob = await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/png",.94)); if(!blob)return;
     const file = new File([blob],`职场去留测试-${result.name}.png`,{type:"image/png"});
     const shareData={title:"职场去留定位测试",text:`我的去留建议是「${result.name}」`,files:[file]};
