@@ -5,9 +5,9 @@ import { useState } from "react";
 type Screen = "home" | "setup" | "camera" | "check" | "recording" | "analysis" | "detail";
 
 const cameraGuides = {
-  "后方": { title: "底线正后方", distance: "4–6m", height: "1.2–1.5m", lens: "0.5×", note: "适合看落点、回位和左右移动。手机与底线中点对齐，避免偏向正手或反手侧。" },
-  "侧方": { title: "底线侧方", distance: "3–4m", height: "1.0–1.2m", lens: "0.5×", note: "适合看击球点、引拍和重心转移。镜头朝向击球区，不要正对发球机。" },
-  "斜后方": { title: "底线斜后方 45°", distance: "4–5m", height: "1.2–1.4m", lens: "0.5×", note: "兼顾挥拍动作与来球线路。手机放在惯用手相反一侧，更少被身体遮挡。" },
+  "后方": { benefit: "落点、回位和左右移动", distance: "4–6m", height: "1.2–1.5m", lens: "0.5×", note: "手机与底线中点对齐，避免偏向正手或反手侧。" },
+  "侧方": { benefit: "击球点、引拍和重心转移", distance: "3–4m", height: "1.0–1.2m", lens: "0.5×", note: "镜头朝向主要击球区，与底线垂直，不要正对发球机。" },
+  "斜后方": { benefit: "挥拍动作和来球线路", distance: "4–5m", height: "1.2–1.4m", lens: "0.5×", note: "手机放在惯用手相反一侧，朝球场中心旋转约 45°，减少身体遮挡。" },
 } as const;
 
 const steps = [
@@ -46,7 +46,7 @@ export default function Home() {
     <div className="sheet">
       <div className="sheet-handle"/>
       <div className="angle-tabs">{["后方","侧方","斜后方"].map(x=><button key={x} onClick={()=>setSide(x)} className={side===x?"active":""}>{x}</button>)}</div>
-      <h2>{cameraGuides[side].title}</h2>
+      <span className="purpose-label">这个机位适合看</span><h2>{cameraGuides[side].benefit}</h2>
       <div className="measurements"><div><b>{cameraGuides[side].distance}</b><span>距底线 / 击球区</span></div><div><b>{cameraGuides[side].height}</b><span>镜头高度</span></div><div><b>{cameraGuides[side].lens}</b><span>推荐镜头</span></div></div>
       <p className="tip"><b>{side}机位怎么摆</b>{cameraGuides[side].note}</p>
       <button className="cta" onClick={()=>setScreen("recording")}>放好手机了，开始训练 <b>●</b></button>
