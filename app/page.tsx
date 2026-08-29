@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type Screen = "home" | "setup" | "camera" | "check" | "recording" | "analysis" | "detail";
+type Screen = "home" | "setup" | "camera" | "check" | "recording" | "analysis" | "detail" | "progress" | "profile";
 
 const cameraGuides = {
   "后方": { benefit: "落点、回位和左右移动", distance: "4–6m", height: "1.2–1.5m", lens: "0.5×", note: "手机与底线中点对齐，避免偏向正手或反手侧。" },
@@ -75,7 +75,7 @@ export default function Home() {
     </section>
     <h2 className="section-title">这一场也做得不错</h2>
     <div className="wins"><div><i>✓</i><p><b>随挥完整</b><span>78% 的击球完成肩上收拍</span></p></div><div><i>✓</i><p><b>回位意识提升</b><span>比上次快了 0.3 秒</span></p></div></div>
-    <nav><button onClick={()=>setScreen("home")}>⌂<span>训练</span></button><button className="active">▥<span>复盘</span></button><button>◒<span>进步</span></button><button>♙<span>我的</span></button></nav>
+    <BottomNav screen={screen} setScreen={setScreen}/>
   </Shell>;
 
   if (screen === "detail") return <Shell title="问题拆解" onBack={back}>
@@ -87,13 +87,37 @@ export default function Home() {
     <button className={`cta ${saved?"done":""}`} onClick={()=>setSaved(true)}>{saved?"✓ 已加入下次训练":"加入下次训练计划"}</button>
   </Shell>;
 
+  if (screen === "progress") return <Shell title="我的进步" onBack={()=>setScreen("home")}>
+    <section className="progress-hero"><span>过去 30 天</span><div><h1>稳定性 <b>+14</b></h1><em>保持得不错</em></div><p>你完成了 6 次独练，最明显的变化是正手击球点更靠前。</p></section>
+    <section className="trend-card"><div className="card-head"><div><span>正手稳定性</span><h2>67 <small>/ 100</small></h2></div><b>↗ 9%</b></div><div className="trend-chart"><i style={{height:"32%"}}/><i style={{height:"41%"}}/><i style={{height:"39%"}}/><i style={{height:"56%"}}/><i style={{height:"63%"}}/><i style={{height:"72%"}}/><span className="chart-line"/></div><div className="chart-labels"><span>8月1日</span><span>今天</span></div></section>
+    <h2 className="section-title">能力分布</h2>
+    <section className="skill-list">{[["击球点","72","#c9f234"],["挥拍完整度","78","#89c8a1"],["回位速度","64","#f4c46b"],["连续稳定性","58","#ee907f"]].map(x=><div key={x[0]}><p><span>{x[0]}</span><b>{x[1]}</b></p><i><em style={{width:`${x[1]}%`,background:x[2]}}/></i></div>)}</section>
+    <section className="milestone"><i>✓</i><div><span>最近达成</span><b>连续 20 拍不失误</b><p>8月27日 · 正手定点训练</p></div></section>
+    <BottomNav screen={screen} setScreen={setScreen}/>
+  </Shell>;
+
+  if (screen === "profile") return <Shell title="我的" onBack={()=>setScreen("home")}>
+    <section className="profile-head"><div className="profile-avatar">楠</div><div><h1>网球练习生</h1><p>NTRP 2.5 · 右手持拍</p></div><button>编辑</button></section>
+    <section className="profile-stats"><div><b>8</b><span>训练次数</span></div><div><b>3.4h</b><span>有效训练</span></div><div><b>486</b><span>分析击球</span></div></section>
+    <div className="settings-label">训练设置</div>
+    <section className="settings">{[["◎","我的水平","NTRP 2.5"],["↗","惯用手","右手"],["⌗","默认机位","后方"],["◉","视频画质","1080P · 60fps"]].map(x=><button key={x[1]}><i>{x[0]}</i><span>{x[1]}</span><b>{x[2]}</b><em>›</em></button>)}</section>
+    <div className="settings-label">数据与支持</div>
+    <section className="settings"><button><i>▣</i><span>训练视频管理</span><b>仅保存在本机</b><em>›</em></button><button><i>?</i><span>架机帮助</span><em>›</em></button></section>
+    <BottomNav screen={screen} setScreen={setScreen}/>
+  </Shell>;
+
   return <main className="home">
     <header><div className="logo">RALLY<span>·</span>ONE</div><button className="avatar">楠</button></header>
     <section className="welcome"><span>周日 · 适合练球</span><h1>一个人练，<br/>也有人<span>看得懂你。</span></h1><p>架好手机，放心去打。每一拍的问题、根因和改法，练完就知道。</p><button className="hero-cta" onClick={()=>setScreen("setup")}><span>＋</span><div><b>开始一次训练</b><small>约 30 秒完成架机</small></div><i>→</i></button></section>
     <section className="how"><div className="section-label">HOW IT WORKS</div>{steps.map((x,i)=><button className="how-step" key={x.n} onClick={()=>setScreen((["camera","recording","analysis"] as Screen[])[i])} aria-label={`进入${x.title}`}><b>{x.n}</b><div><h3>{x.title}</h3><p>{x.sub}</p></div><i>{["⌗","●","↗"][i]}</i></button>)}</section>
     <section className="last"><div><span>上次训练 · 8月27日</span><h2>正手击球点</h2><p><b>＋9</b> 稳定性提升</p></div><button onClick={()=>setScreen("analysis")}>查看复盘 →</button></section>
-    <nav><button className="active">⌂<span>训练</span></button><button onClick={()=>setScreen("analysis")}>▥<span>复盘</span></button><button>◒<span>进步</span></button><button>♙<span>我的</span></button></nav>
+    <BottomNav screen={screen} setScreen={setScreen}/>
   </main>;
+}
+
+function BottomNav({screen,setScreen}:{screen:Screen,setScreen:(screen:Screen)=>void}) {
+  const items:[Screen,string,string][] = [["home","⌂","训练"],["analysis","▥","复盘"],["progress","◒","进步"],["profile","♙","我的"]];
+  return <nav>{items.map(([target,icon,label])=><button key={target} className={screen===target?"active":""} onClick={()=>setScreen(target)}>{icon}<span>{label}</span></button>)}</nav>;
 }
 
 function Shell({children,title,onBack,dark=false}:{children:React.ReactNode,title:string,onBack:()=>void,dark?:boolean}) {
