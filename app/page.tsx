@@ -47,6 +47,59 @@ const questions: { text: string; dimension: Dimension; reverse?: boolean }[] = [
   { text: "我想离开的念头已经持续超过三个月。", dimension: "readiness" },
 ];
 
+const sectorQuestionText: Record<Sector, Record<number, string>> = {
+  bigtech: {
+    0: "把绩效压力、加班和平台光环都算进去，我认可现在的薪酬回报。",
+    4: "继续留在当前业务一年，我还能获得可迁移的项目与能力增量。",
+    8: "突发需求和即时响应经常侵入休息时间，我却很难拒绝。",
+    9: "直属领导能给出稳定的绩效预期，而不是临近评估才改变标准。",
+    13: "如果能转去更有前景的业务或团队，我愿意继续留在这家公司。",
+    16: "最近三个月，高强度节奏没有持续影响我的睡眠和情绪。",
+    18: "即使离开当前平台，我仍愿意继续做同类岗位。",
+    21: "我已经开始了解外部级别、薪酬区间和真实岗位机会。",
+  },
+  state: {
+    0: "把稳定性、福利和晋升速度都算进去，我认可当前的综合回报。",
+    4: "沿着现有发展通道再留一年，我能看到明确的能力或职级增长。",
+    8: "流程、汇报和临时协调经常侵入个人时间，我却很难调整。",
+    9: "直属领导能明确分工和评价标准，不会让我反复猜测。",
+    13: "如果能内部换部门或岗位，我愿意继续留在这个平台。",
+    16: "最近三个月，复杂协作与人情压力没有持续影响我的状态。",
+    18: "即使失去当前平台的稳定性，我仍愿意继续做同类工作。",
+    21: "我已经了解内部竞聘、调岗与外部求职的真实成本。",
+  },
+  public: {
+    0: "把编制/身份、稳定性和收入上限都算进去，我认可当前的综合回报。",
+    4: "按现有路径再留一年，我能看到专业能力或发展空间的增长。",
+    8: "临时事务、人情协调或隐形要求经常侵入生活，我却很难拒绝。",
+    9: "直属领导的任务安排和评价方式相对清晰、稳定。",
+    13: "如果能调岗、借调或换科室，我愿意继续留在体系内。",
+    16: "最近三个月，工作氛围没有持续影响我的睡眠与家庭生活。",
+    18: "即使离开现有身份保障，我仍愿意继续做相近的公共服务工作。",
+    21: "我已经认真核算过离开身份、地点与家庭预期的现实成本。",
+  },
+  small: {
+    0: "把职责扩张、业务风险和成长速度都算进去，我认可当前回报。",
+    4: "即使公司变化很快，我仍能持续积累可迁移的核心能力。",
+    8: "因为人少事多，我经常无边界地承接职责外任务。",
+    9: "创始人或直属领导的方向相对稳定，承诺与行动基本一致。",
+    13: "如果业务更稳定、分工更清楚，我愿意继续留在这里。",
+    16: "最近三个月，业务不确定性没有持续影响我的睡眠和情绪。",
+    18: "即使公司最终没有成功，我仍认可自己正在做的这类工作。",
+    21: "我已经了解公司现金流、业务前景和外部同类岗位机会。",
+  },
+  other: {
+    0: "把获客成本、收入波动和时间自由都算进去，我认可当前回报。",
+    4: "继续当前工作方式一年，我能积累更稳定的客户、作品或能力。",
+    8: "客户消息和项目节点经常侵入休息时间，我却很难设定边界。",
+    9: "主要客户或合作方能给出相对明确、稳定的需求与反馈。",
+    13: "如果能优化客户结构或合作方式，我愿意继续当前路径。",
+    16: "最近三个月，收入与项目波动没有持续影响我的睡眠和情绪。",
+    18: "即使换一批客户或合作方，我仍愿意继续做同类工作。",
+    21: "我已经在测试新的客户来源、产品形式或职业选项。",
+  },
+};
+
 const drainCopy: Record<Exclude<Dimension, "readiness">, { name: string; text: string }> = {
   reward: { name: "回报失衡", text: "你的投入与得到的东西正在失去平衡。" }, growth: { name: "成长停滞", text: "累不是核心，真正难受的是看不到积累。" },
   control: { name: "边界失控", text: "责任在增加，但决定权和个人空间没有同步增加。" }, manager: { name: "管理内耗", text: "直属管理方式正在放大日常工作的摩擦。" },
@@ -71,11 +124,16 @@ export default function Home() {
   const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<number[]>([]);
 
+  const activeQuestions = useMemo(() => questions.map((question, index) => ({
+    ...question,
+    text: sector ? (sectorQuestionText[sector][index] ?? question.text) : question.text,
+  })), [sector]);
+
   const scores = useMemo(() => {
     const raw = Object.fromEntries(Object.keys(dimensions).map((key) => [key, 0])) as Record<Dimension, number>;
-    questions.forEach((q, i) => raw[q.dimension] += q.reverse ? 3 - (answers[i] ?? 0) : (answers[i] ?? 0));
+    activeQuestions.forEach((q, i) => raw[q.dimension] += q.reverse ? 3 - (answers[i] ?? 0) : (answers[i] ?? 0));
     return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, Math.round((v / 9) * 100)])) as Record<Dimension, number>;
-  }, [answers]);
+  }, [answers, activeQuestions]);
 
   const healthKeys = Object.keys(drainCopy) as Exclude<Dimension, "readiness">[];
   const health = Math.round(healthKeys.reduce((sum, key) => sum + scores[key], 0) / healthKeys.length);
@@ -94,7 +152,7 @@ export default function Home() {
 
   function answer(value: number) {
     const next = [...answers]; next[current] = value; setAnswers(next);
-    if (current === questions.length - 1) setStage("result"); else setCurrent(current + 1);
+    if (current === activeQuestions.length - 1) setStage("result"); else setCurrent(current + 1);
   }
   function restart() { setStage("landing"); setSector(null); setCurrent(0); setAnswers([]); }
   async function share() {
@@ -150,8 +208,8 @@ export default function Home() {
   </main>;
 
   if (stage === "quiz") {
-    const progress = Math.round(((current + 1) / questions.length) * 100);
-    return <main className="page quiz-page"><header className="quiz-header"><button className="back" onClick={()=>current?setCurrent(current-1):setStage("sector")}>←</button><span>{current+1} / {questions.length}</span><b>{progress}%</b></header><div className="progress"><i style={{width:`${progress}%`}} /></div><section className="question-card"><div className="question-number">{sector && sectors[sector].name} · QUESTION {String(current+1).padStart(2,"0")}</div><h1>{questions[current].text}</h1><p>按过去三个月的真实感受作答，不用选“应该怎样”。</p><div className="options">{options.map((option,index)=><button className={answers[current]===index?"selected":""} key={option} onClick={()=>answer(index)}><span>{String.fromCharCode(65+index)}</span>{option}</button>)}</div></section></main>;
+    const progress = Math.round(((current + 1) / activeQuestions.length) * 100);
+    return <main className="page quiz-page"><header className="quiz-header"><button className="back" onClick={()=>current?setCurrent(current-1):setStage("sector")}>←</button><span>{current+1} / {activeQuestions.length}</span><b>{progress}%</b></header><div className="progress"><i style={{width:`${progress}%`}} /></div><section className="question-card"><div className="question-number">{sector && sectors[sector].name} · QUESTION {String(current+1).padStart(2,"0")}</div><h1>{activeQuestions[current].text}</h1><p>按过去三个月的真实感受作答，不用选“应该怎样”。</p><div className="options">{options.map((option,index)=><button className={answers[current]===index?"selected":""} key={option} onClick={()=>answer(index)}><span>{String.fromCharCode(65+index)}</span>{option}</button>)}</div></section></main>;
   }
 
   if (stage === "sector") return <main className="page sector-page"><header className="quiz-header"><button className="back" onClick={()=>setStage("landing")}>←</button><span>第一步</span><b>环境分流</b></header><section className="sector-head"><div className="question-number">先校准你的工作环境</div><h1>你目前更接近哪种职场？</h1><p>同样是“想辞职”，在大厂、国企和体制内的机会成本完全不同。这个选择会影响最终建议。</p></section><div className="sector-options">{(Object.keys(sectors) as Sector[]).map(key=><button key={key} onClick={()=>{setSector(key);setStage("quiz")}}><i>{sectors[key].icon}</i><div><b>{sectors[key].name}</b><span>{sectors[key].hint}</span></div><strong>→</strong></button>)}</div></main>;
