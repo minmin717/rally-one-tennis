@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "你该辞职，还是再撑一段时间？｜职场去留定位测试",
-  description: "24道题，判断真正需要改变的是条件、领导、团队、岗位，还是整个职业方向。",
+  title: "RALLY·ONE｜一个人练，也有人看得懂你",
+  description: "为独自练球的网球爱好者提供架机指导、动作诊断和可执行训练计划。",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
