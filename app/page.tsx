@@ -98,9 +98,35 @@ export default function Home() {
   }
   function restart() { setStage("landing"); setSector(null); setCurrent(0); setAnswers([]); }
   async function share() {
-    const text = `我的职场去留建议是「${result.name}」：${result.decision}。你该辞职，还是再撑一段时间？`;
-    if (navigator.share) await navigator.share({ title: "职场去留定位测试", text, url: location.href });
-    else { await navigator.clipboard.writeText(`${text} ${location.href}`); alert("结果文案已复制"); }
+    if (!sector) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 1080; canvas.height = 1440;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const roundRect = (x:number,y:number,w:number,h:number,r:number,fill:string) => { ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fillStyle=fill; ctx.fill(); };
+    const wrap = (text:string,x:number,y:number,max:number,line:number,maxLines=9) => {
+      const chars=[...text]; let row=""; let n=0;
+      for (const char of chars) { const next=row+char; if(ctx.measureText(next).width>max){ctx.fillText(row,x,y+n*line);row=char;n++;if(n>=maxLines)return y+n*line;}else row=next; }
+      if(row&&n<maxLines)ctx.fillText(row,x,y+n*line); return y+(n+1)*line;
+    };
+    const gradient=ctx.createLinearGradient(0,0,1080,1440); gradient.addColorStop(0,"#fff4e8");gradient.addColorStop(1,"#f3eadc");ctx.fillStyle=gradient;ctx.fillRect(0,0,1080,1440);
+    ctx.fillStyle="#20201f";ctx.font="800 28px Arial, sans-serif";ctx.fillText("CAREER DECISION LAB",72,78);
+    ctx.fillStyle="#ff5b3d";ctx.font="700 25px Arial, sans-serif";ctx.fillText(`${sectors[sector].name} · 职场去留定位`,72,140);
+    ctx.fillStyle="#20201f";ctx.font="900 82px Arial, sans-serif";ctx.fillText(result.name,72,255);
+    ctx.fillStyle="#5f574f";ctx.font="700 35px Arial, sans-serif";wrap(result.decision,72,320,900,50,2);
+    roundRect(72,420,936,245,32,"#20201f");ctx.fillStyle="#c9c0b6";ctx.font="700 25px Arial, sans-serif";ctx.fillText("离职倾向指数",112,475);
+    ctx.fillStyle="#ff684b";ctx.font="900 112px Arial, sans-serif";ctx.fillText(String(departure),112,590);ctx.font="800 34px Arial, sans-serif";ctx.fillText("%",250,588);
+    ctx.fillStyle="#ffffff";ctx.font="700 28px Arial, sans-serif";ctx.fillText("真正需要改变",500,490);ctx.font="900 44px Arial, sans-serif";wrap(result.target,500,555,430,55,2);
+    ctx.fillStyle="#20201f";ctx.font="900 32px Arial, sans-serif";ctx.fillText("你的三大消耗来源",72,745);
+    drains.slice(0,3).forEach((key,i)=>{const y=785+i*125;roundRect(72,y,936,100,22,"#fffaf4");ctx.fillStyle="#ff5b3d";ctx.font="800 24px Arial, sans-serif";ctx.fillText(`0${i+1}`,102,y+59);ctx.fillStyle="#20201f";ctx.font="900 31px Arial, sans-serif";ctx.fillText(drainCopy[key].name,175,y+60);ctx.textAlign="right";ctx.fillText(String(scores[key]),960,y+60);ctx.textAlign="left";});
+    ctx.fillStyle="#20201f";ctx.font="900 32px Arial, sans-serif";ctx.fillText("接下来先做这三件事",72,1190);
+    ctx.font="600 24px Arial, sans-serif";ctx.fillStyle="#5f574f";result.actions.forEach((x,i)=>wrap(`${i+1}. ${x}`,72,1240+i*55,920,34,1));
+    ctx.fillStyle="#8a8177";ctx.font="500 21px Arial, sans-serif";ctx.fillText("结果用于职业自我探索 · 长按保存图片分享",72,1390);
+    const blob = await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/png",.94)); if(!blob)return;
+    const file = new File([blob],`职场去留测试-${result.name}.png`,{type:"image/png"});
+    const shareData={title:"职场去留定位测试",text:`我的去留建议是「${result.name}」`,files:[file]};
+    if(navigator.share && (!navigator.canShare || navigator.canShare(shareData))) await navigator.share(shareData);
+    else { const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000); }
   }
 
   if (stage === "result" && sector) return <main className="page result-page">
@@ -116,7 +142,7 @@ export default function Home() {
     <section className="advice-card"><div className="section-kicker">未来30天行动清单</div><h2>先行动，再做不可逆决定</h2>{result.actions.map((x,i)=><div className="advice" key={x}><b>0{i+1}</b><p>{x}</p></div>)}</section>
     <section className="persona-card"><span>你的次要耗电类型</span><b>{drainCopy[drains[0]].name}</b><p>{drainCopy[drains[0]].text}</p></section>
     <section className="disclaimer">结果用于职业自我探索，不替代劳动法律、医疗或心理专业意见。若工作已持续影响健康或安全，请优先寻求现实支持。</section>
-    <div className="sticky-actions"><button className="secondary" onClick={restart}>重新测试</button><button className="primary" onClick={share}>分享结果</button></div>
+    <div className="sticky-actions"><button className="secondary" onClick={restart}>重新测试</button><button className="primary" onClick={share}>生成图片分享</button></div>
   </main>;
 
   if (stage === "quiz") {
