@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "职场耗电人格测试｜你是哪种打工人？",
-  description: "18道题，测出你的职场耗电人格、隐藏优势与行动建议。",
+  title: "你该辞职，还是再撑一段时间？｜职场去留定位测试",
+  description: "24道题，判断真正需要改变的是条件、领导、团队、岗位，还是整个职业方向。",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
