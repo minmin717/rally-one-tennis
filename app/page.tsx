@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 
-type Screen = "home" | "setup" | "camera" | "recording" | "analysis" | "detail";
+type Screen = "home" | "setup" | "camera" | "check" | "recording" | "analysis" | "detail";
+
+const cameraGuides = {
+  "后方": { title: "底线正后方", distance: "4–6m", height: "1.2–1.5m", lens: "0.5×", note: "适合看落点、回位和左右移动。手机与底线中点对齐，避免偏向正手或反手侧。" },
+  "侧方": { title: "底线侧方", distance: "3–4m", height: "1.0–1.2m", lens: "0.5×", note: "适合看击球点、引拍和重心转移。镜头朝向击球区，不要正对发球机。" },
+  "斜后方": { title: "底线斜后方 45°", distance: "4–5m", height: "1.2–1.4m", lens: "0.5×", note: "兼顾挥拍动作与来球线路。手机放在惯用手相反一侧，更少被身体遮挡。" },
+} as const;
 
 const steps = [
   { n: "01", title: "架机", sub: "先让 AI 看得清" },
@@ -12,7 +18,7 @@ const steps = [
 
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
-  const [side, setSide] = useState("后方");
+  const [side, setSide] = useState<keyof typeof cameraGuides>("后方");
   const [focus, setFocus] = useState("正手稳定性");
   const [saved, setSaved] = useState(false);
 
@@ -34,18 +40,24 @@ export default function Home() {
 
   if (screen === "camera") return <Shell title="架机助手" onBack={back} dark>
     <div className="camera-stage">
-      <div className="court-wrap"><span className="court-caption">标准网球场 · 俯视图</span><div className="court"><div className="singles singles-left"/><div className="singles singles-right"/><div className="service service-far"/><div className="service service-near"/><div className="center-service"/><div className="net"/><div className="player">●<i/></div></div><div className={`phone ${side}`}><b>▯</b><span>手机</span></div></div>
-      <div className="camera-ok"><i>✓</i><div><b>全身已入镜</b><span>机位适合分析 {focus}</span></div></div>
+      <div className="court-wrap"><span className="court-caption">标准网球场 · 俯视图</span><div className="court"><div className="singles singles-left"/><div className="singles singles-right"/><div className="service service-far"/><div className="service service-near"/><div className="center-service"/><div className="net"/><div className="player"><span className="head"/><span className="body"/><span className="arms"/><span className="legs"/><em>击球者</em></div></div><div className={`phone ${side}`}><b>▯</b><span>手机</span></div></div>
+      <div className="camera-ok pending"><i>1</i><div><b>先按图摆好手机</b><span>下一步进入取景画面，再判断是否全身入镜</span></div></div>
     </div>
     <div className="sheet">
       <div className="sheet-handle"/>
       <div className="angle-tabs">{["后方","侧方","斜后方"].map(x=><button key={x} onClick={()=>setSide(x)} className={side===x?"active":""}>{x}</button>)}</div>
-      <h2>{side === "后方" ? "推荐：底线后方 45°" : side === "侧方" ? "适合看击球点与重心" : "适合同时看挥拍与落点"}</h2>
-      <div className="measurements"><div><b>4–6m</b><span>距底线</span></div><div><b>1.2m</b><span>镜头高度</span></div><div><b>0.5×</b><span>广角镜头</span></div></div>
-      <p className="tip"><b>别把手机放在地上</b>低机位会让腿部遮挡击球点，也更难判断重心移动。</p>
-      <button className="cta" onClick={()=>setScreen("recording")}>机位好了，开始训练 <b>●</b></button>
+      <h2>{cameraGuides[side].title}</h2>
+      <div className="measurements"><div><b>{cameraGuides[side].distance}</b><span>距底线 / 击球区</span></div><div><b>{cameraGuides[side].height}</b><span>镜头高度</span></div><div><b>{cameraGuides[side].lens}</b><span>推荐镜头</span></div></div>
+      <p className="tip"><b>{side}机位怎么摆</b>{cameraGuides[side].note}</p>
+      <button className="cta" onClick={()=>setScreen("check")}>打开相机，检查是否入镜 <b>→</b></button>
     </div>
   </Shell>;
+
+  if (screen === "check") return <main className="recording preflight">
+    <div className="rec-top"><button onClick={()=>setScreen("camera")}>←</button><span>入镜检查</span><b>{side}机位</b></div>
+    <div className="viewfinder"><div className="frame-guide"><span>头部</span><i/><b>双脚需在框内</b></div><div className="check-card"><i>2</i><div><b>请站到击球位置</b><span>确保头顶、球拍和双脚都在画面内</span></div></div></div>
+    <div className="check-actions"><p>手机摆好后，再由画面判断是否全身入镜</p><button onClick={()=>setScreen("recording")}>✓ 我已全身入镜，开始录制</button></div>
+  </main>;
 
   if (screen === "recording") return <main className="recording">
     <div className="rec-top"><button onClick={()=>setScreen("camera")}>×</button><span><i/> REC · 08:42</span><b>72 拍</b></div>
