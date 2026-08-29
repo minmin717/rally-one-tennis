@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { DrawingUtils, FilesetResolver, PoseLandmarker, type NormalizedLandmark } from "@mediapipe/tasks-vision";
 
 type Screen = "home" | "setup" | "camera" | "check" | "recording" | "analysis" | "detail" | "progress" | "profile";
 
@@ -16,11 +17,26 @@ const steps = [
   { n: "03", title: "复盘", sub: "只改最关键的一件事" },
 ];
 
+type Diagnosis = { title:string; summary:string; cue:string; drill:string; confidence:string; visibility:number; knee:number; stance:number; frames:number };
+function angle(a:NormalizedLandmark,b:NormalizedLandmark,c:NormalizedLandmark){const ab=[a.x-b.x,a.y-b.y],cb=[c.x-b.x,c.y-b.y];const d=ab[0]*cb[0]+ab[1]*cb[1];const m=Math.hypot(...ab)*Math.hypot(...cb);return Math.acos(Math.max(-1,Math.min(1,d/m)))*180/Math.PI}
+function median(values:number[]){const a=[...values].sort((x,y)=>x-y);return a.length?a[Math.floor(a.length/2)]:0}
+function diagnose(samples:NormalizedLandmark[][]):Diagnosis{const good=samples.filter(p=>p.length===33);const visibility=good.length?samples.filter(p=>[11,12,23,24,25,26,27,28].every(i=>(p[i]?.visibility??0)>.55)).length/good.length:0;if(good.length<10||visibility<.45)return{title:"暂时无法可靠判断",summary:"有效人体关键点不足。请确认头部、双脚和挥拍手都在画面内，并避免逆光后再录一组。",cue:"先让全身完整入镜",drill:"调整机位后试拍 3 秒",confidence:"证据不足",visibility:Math.round(visibility*100),knee:0,stance:0,frames:good.length};const knees=good.flatMap(p=>[angle(p[23],p[25],p[27]),angle(p[24],p[26],p[28])]);const stances=good.map(p=>Math.abs(p[27].x-p[28].x)/Math.max(.02,Math.abs(p[11].x-p[12].x)));const knee=Math.round(median(knees)),stance=median(stances);if(knee>158)return{title:"准备姿势屈膝不足",summary:`有效帧中膝关节角度中位数约 ${knee}°，身体较直，启动和回位时可用的弹性较少。`,cue:"髋部下沉，膝盖保持有弹性",drill:"3 组 × 8 次分腿垫步后启动",confidence:"中等置信度",visibility:Math.round(visibility*100),knee,stance:Math.round(stance*100)/100,frames:good.length};if(stance<.88)return{title:"准备站位偏窄",summary:`双脚间距约为肩宽的 ${stance.toFixed(1)} 倍，横向启动时支撑面偏小。`,cue:"双脚比肩略宽，前脚掌着地",drill:"3 组 × 20 秒底线横向小碎步",confidence:"中等置信度",visibility:Math.round(visibility*100),knee,stance:Math.round(stance*100)/100,frames:good.length};return{title:"准备与下肢支撑稳定",summary:"本组没有发现明显的站姿或屈膝问题。当前端侧模型无法可靠判断球拍面和真实触球点。",cue:"保持低重心，击球后回到底线中点",drill:"3 组 × 10 拍击球后触碰回位标记",confidence:"基础指标通过",visibility:Math.round(visibility*100),knee,stance:Math.round(stance*100)/100,frames:good.length}}
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
   const [side, setSide] = useState<keyof typeof cameraGuides>("后方");
   const [focus, setFocus] = useState("正手稳定性");
   const [saved, setSaved] = useState(false);
+  const [seconds,setSeconds]=useState(0);
+  const [cameraError,setCameraError]=useState("");
+  const [analysisResult,setAnalysisResult]=useState<Diagnosis|null>(null);
+  const videoRef=useRef<HTMLVideoElement>(null),canvasRef=useRef<HTMLCanvasElement>(null),streamRef=useRef<MediaStream|null>(null),recorderRef=useRef<MediaRecorder|null>(null),samplesRef=useRef<NormalizedLandmark[][]>([]),timerRef=useRef<number|undefined>(undefined),rafRef=useRef<number|undefined>(undefined);
+
+  async function startTraining(target:Screen="recording"){setCameraError("");try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});streamRef.current=stream;setScreen(target)}catch{setCameraError("无法打开相机。请在浏览器设置中允许相机权限后重试。")}}
+  async function saveVideo(blob:Blob){return new Promise<void>((resolve,reject)=>{const req=indexedDB.open("rally-one",1);req.onupgradeneeded=()=>req.result.createObjectStore("sessions",{keyPath:"id"});req.onsuccess=()=>{const tx=req.result.transaction("sessions","readwrite");tx.objectStore("sessions").put({id:Date.now(),createdAt:new Date().toISOString(),focus,side,blob});tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error)};req.onerror=()=>reject(req.error)})}
+  async function stopTraining(){if(recorderRef.current?.state==="recording")recorderRef.current.stop();if(timerRef.current)window.clearInterval(timerRef.current);if(rafRef.current)cancelAnimationFrame(rafRef.current);streamRef.current?.getTracks().forEach(t=>t.stop());setAnalysisResult(diagnose(samplesRef.current));setScreen("analysis")}
+
+  useEffect(()=>{if((screen!=="recording"&&screen!=="check")||!streamRef.current||!videoRef.current)return;const video=videoRef.current;video.srcObject=streamRef.current;video.play();let cancelled=false;const chunks:Blob[]=[];samplesRef.current=[];setSeconds(0);const recorder=new MediaRecorder(streamRef.current,{mimeType:MediaRecorder.isTypeSupported("video/webm;codecs=vp9")?"video/webm;codecs=vp9":"video/webm"});recorderRef.current=recorder;recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onstop=()=>{if(chunks.length)saveVideo(new Blob(chunks,{type:recorder.mimeType})).catch(()=>{})};recorder.start(1000);timerRef.current=window.setInterval(()=>setSeconds(s=>s+1),1000);(async()=>{try{const base=new URL("./",window.location.href).href;const vision=await FilesetResolver.forVisionTasks(new URL("mediapipe-wasm",base).href);const landmarker=await PoseLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:new URL("pose_landmarker_lite.task",base).href},runningMode:"VIDEO",numPoses:1,minPoseDetectionConfidence:.45,minTrackingConfidence:.45});let last=0;const loop=()=>{if(cancelled)return;if(video.readyState>=2&&performance.now()-last>180){last=performance.now();const result=landmarker.detectForVideo(video,last);if(result.landmarks[0]){samplesRef.current.push(result.landmarks[0]);const canvas=canvasRef.current;if(canvas){canvas.width=video.videoWidth;canvas.height=video.videoHeight;const ctx=canvas.getContext("2d");if(ctx){ctx.clearRect(0,0,canvas.width,canvas.height);new DrawingUtils(ctx).drawConnectors(result.landmarks[0],PoseLandmarker.POSE_CONNECTIONS,{color:"#c9f234",lineWidth:3})}}}}rafRef.current=requestAnimationFrame(loop)};loop()}catch{setCameraError("动作识别模型加载失败，但仍可继续录制视频。")}})();return()=>{cancelled=true;if(rafRef.current)cancelAnimationFrame(rafRef.current)}},[screen]);
 
   const back = () => setScreen(screen === "camera" ? "setup" : screen === "setup" ? "home" : "analysis");
 
@@ -49,32 +65,32 @@ export default function Home() {
       <span className="purpose-label">这个机位适合看</span><h2>{cameraGuides[side].benefit}</h2>
       <div className="measurements"><div><b>{cameraGuides[side].distance}</b><span>距底线 / 击球区</span></div><div><b>{cameraGuides[side].height}</b><span>镜头高度</span></div><div><b>{cameraGuides[side].lens}</b><span>推荐镜头</span></div></div>
       <p className="tip"><b>{side}机位怎么摆</b>{cameraGuides[side].note}</p>
-      <button className="cta" onClick={()=>setScreen("recording")}>放好手机了，开始训练 <b>●</b></button>
-      <button className="test-shot" onClick={()=>setScreen("check")}>不确定画面？先试拍 3 秒检查 <span>可跳过</span></button>
+      {cameraError&&<p className="camera-error">{cameraError}</p>}<button className="cta" onClick={()=>startTraining("recording")}>放好手机了，开始训练 <b>●</b></button>
+      <button className="test-shot" onClick={()=>startTraining("check")}>不确定画面？先试拍 3 秒检查 <span>可跳过</span></button>
     </div>
   </Shell>;
 
   if (screen === "check") return <main className="recording preflight">
     <div className="rec-top"><button onClick={()=>setScreen("camera")}>←</button><span>3 秒试拍</span><b>{side}机位</b></div>
-    <div className="viewfinder"><div className="frame-guide"><span>头部</span><i/><b>双脚需在框内</b></div><div className="check-card"><i>3</i><div><b>站到击球区，挥拍一次</b><span>试拍结束后自动确认人物是否完整入镜</span></div></div></div>
-    <div className="check-actions"><p>这是可选步骤，不影响直接开始训练</p><button onClick={()=>setScreen("recording")}>开始 3 秒试拍</button><button className="skip-check" onClick={()=>setScreen("recording")}>跳过，直接开始训练</button></div>
+    <div className="viewfinder"><video ref={videoRef} muted playsInline/><canvas ref={canvasRef}/><div className="frame-guide"><span>头部</span><i/><b>双脚需在框内</b></div><div className="check-card"><i>{Math.max(0,3-seconds)}</i><div><b>站到击球区，挥拍一次</b><span>绿色骨架出现，代表已识别到人物</span></div></div></div>
+    <div className="check-actions"><p>这是可选步骤，不影响直接开始训练</p><button onClick={()=>{stopTraining();setScreen("camera")}}>完成试拍，返回调整</button><button className="skip-check" onClick={()=>{streamRef.current?.getTracks().forEach(t=>t.stop());setScreen("camera")}}>跳过试拍</button></div>
   </main>;
 
   if (screen === "recording") return <main className="recording">
-    <div className="rec-top"><button onClick={()=>setScreen("camera")}>×</button><span><i/> REC · 08:42</span><b>72 拍</b></div>
-    <div className="viewfinder"><div className="body-guide"><i/><b/><span/><em/></div><div className="ball">●</div><div className="live-card"><span>本组关注</span><b>{focus}</b><p>再打 8 拍，保持击球后回位</p></div></div>
-    <div className="rec-bottom"><button className="flip">↻</button><button className="stop" onClick={()=>setScreen("analysis")}><i/></button><button className="sound">♬</button></div>
+    <div className="rec-top"><button onClick={stopTraining}>×</button><span><i/> REC · {String(Math.floor(seconds/60)).padStart(2,"0")}:{String(seconds%60).padStart(2,"0")}</span><b>{samplesRef.current.length} 帧</b></div>
+    <div className="viewfinder"><video ref={videoRef} muted playsInline/><canvas ref={canvasRef}/><div className="live-card"><span>端侧识别中 · 视频仅保存在本机</span><b>{focus}</b><p>{cameraError||"绿色骨架出现时，动作才会进入诊断"}</p></div></div>
+    <div className="rec-bottom"><button className="flip">锁定</button><button className="stop" onClick={stopTraining}><i/></button><button className="sound">静音</button></div>
   </main>;
 
   if (screen === "analysis") return <Shell title="训练复盘" onBack={()=>setScreen("home")}>
-    <div className="session-head"><div><span>8月30日 · 发球机</span><h1>{focus}</h1></div><div className="score"><b>67</b><span>本次表现</span></div></div>
-    <div className="stats"><div><b>12′38″</b><span>有效训练</span></div><div><b>86</b><span>有效击球</span></div><div><b>61%</b><span>甜点击球</span></div></div>
+    <div className="session-head"><div><span>{new Date().toLocaleDateString("zh-CN")} · 本机分析</span><h1>{focus}</h1></div><div className="score"><b>{analysisResult?.visibility??0}</b><span>入镜完整度</span></div></div>
+    <div className="stats"><div><b>{seconds}s</b><span>有效训练</span></div><div><b>{analysisResult?.frames??0}</b><span>有效姿态帧</span></div><div><b>{analysisResult?.knee||"—"}</b><span>膝角中位数</span></div></div>
     <section className="priority-card" onClick={()=>setScreen("detail")}>
       <div className="priority-video"><div className="mini-person">●<i/></div><span>00:36</span><button>▶</button></div>
-      <div className="priority-copy"><div className="pill">本次最优先改</div><h2>击球点偏晚</h2><p>不是挥拍慢，而是转体启动晚，导致球到了身体侧面才接触。</p><div className="cause"><span>看到球晚</span><i>→</i><span>转体晚</span><i>→</i><b>击球点晚</b></div><button>看证据和怎么改 <b>→</b></button></div>
+      <div className="priority-copy"><div className="pill">{analysisResult?.confidence||"示例报告"}</div><h2>{analysisResult?.title||"还没有真实训练数据"}</h2><p>{analysisResult?.summary||"请先完成一次真实录制。"}</p><div className="cause"><span>完整入镜 {analysisResult?.visibility??0}%</span><i>·</i><span>站距 {analysisResult?.stance||"—"}</span><i>·</i><b>{analysisResult?.frames??0} 帧证据</b></div><button>查看训练口令 <b>→</b></button></div>
     </section>
     <h2 className="section-title">这一场也做得不错</h2>
-    <div className="wins"><div><i>✓</i><p><b>随挥完整</b><span>78% 的击球完成肩上收拍</span></p></div><div><i>✓</i><p><b>回位意识提升</b><span>比上次快了 0.3 秒</span></p></div></div>
+    <div className="wins"><div><i>✓</i><p><b>下一组口令</b><span>{analysisResult?.cue||"完成真实录制后生成"}</span></p></div><div><i>↗</i><p><b>建议练习</b><span>{analysisResult?.drill||"完成真实录制后生成"}</span></p></div></div>
     <BottomNav screen={screen} setScreen={setScreen}/>
   </Shell>;
 
