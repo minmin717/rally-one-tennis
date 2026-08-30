@@ -91,14 +91,17 @@ function createCompatibleRecorder(stream: MediaStream) {
 
 function diagnose(samples: NormalizedLandmark[][]): Diagnosis {
   const good = samples.filter((p) => p.length === 33);
+  const bodyPoints = [11, 12, 23, 24, 25, 26, 27, 28];
   const visibility = good.length
-    ? samples.filter((p) =>
-        [11, 12, 23, 24, 25, 26, 27, 28].every(
-          (i) => (p[i]?.visibility ?? 0) > 0.55,
-        ),
-      ).length / good.length
+    ? good.reduce(
+        (total, pose) =>
+          total +
+          bodyPoints.filter((i) => (pose[i]?.visibility ?? 0) > 0.3).length /
+            bodyPoints.length,
+        0,
+      ) / good.length
     : 0;
-  if (good.length < 10 || visibility < 0.45)
+  if (good.length < 8 || visibility < 0.5)
     return {
       title: "暂时无法可靠判断",
       summary:
@@ -296,8 +299,9 @@ export default function Home() {
           },
           runningMode: "VIDEO",
           numPoses: 1,
-          minPoseDetectionConfidence: 0.45,
-          minTrackingConfidence: 0.45,
+          minPoseDetectionConfidence: 0.25,
+          minPosePresenceConfidence: 0.25,
+          minTrackingConfidence: 0.25,
         });
         setRecordingStatus((status) =>
           status.startsWith("录像中") ? "录像中 · 动作识别已就绪" : status,
@@ -305,7 +309,7 @@ export default function Home() {
         let last = 0;
         const loop = () => {
           if (cancelled) return;
-          if (video.readyState >= 2 && performance.now() - last > 180) {
+          if (video.readyState >= 2 && performance.now() - last > 100) {
             last = performance.now();
             const result = landmarker.detectForVideo(video, last);
             if (result.landmarks[0]) {
