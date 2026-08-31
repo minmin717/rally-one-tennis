@@ -59,6 +59,8 @@ type Diagnosis = {
   knee: number;
   stance: number;
   frames: number;
+  swings?: number;
+  evidence?: string;
 };
 function angle(
   a: NormalizedLandmark,
@@ -76,6 +78,17 @@ function median(values: number[]) {
   return a.length ? a[Math.floor(a.length / 2)] : 0;
 }
 
+const pointDistance = (a: NormalizedLandmark, b: NormalizedLandmark) =>
+  Math.hypot(a.x - b.x, a.y - b.y);
+
+const midpoint = (a: NormalizedLandmark, b: NormalizedLandmark) =>
+  ({
+    x: (a.x + b.x) / 2,
+    y: (a.y + b.y) / 2,
+    z: 0,
+    visibility: Math.min(a.visibility ?? 0, b.visibility ?? 0),
+  }) as NormalizedLandmark;
+
 function createCompatibleRecorder(stream: MediaStream) {
   const supportedType = [
     "video/mp4;codecs=h264",
@@ -89,7 +102,7 @@ function createCompatibleRecorder(stream: MediaStream) {
     : new MediaRecorder(stream);
 }
 
-function diagnose(samples: NormalizedLandmark[][]): Diagnosis {
+function diagnoseLegacy(samples: NormalizedLandmark[][]): Diagnosis {
   const good = samples.filter((p) => p.length === 33);
   const bodyPoints = [11, 12, 23, 24, 25, 26, 27, 28];
   const visibility = good.length
@@ -162,10 +175,186 @@ function diagnose(samples: NormalizedLandmark[][]): Diagnosis {
   };
 }
 
+function diagnose(
+  samples: NormalizedLandmark[][],
+  hand: "right" | "left",
+  side: keyof typeof cameraGuides,
+): Diagnosis {
+  const good = samples.filter((pose) => pose.length === 33);
+  const wrist = hand === "right" ? 16 : 15;
+  const elbow = hand === "right" ? 14 : 13;
+  const required = [0, 11, 12, 23, 24, 27, 28, wrist, elbow];
+  const visibility = good.length
+    ? good.reduce(
+        (sum, pose) =>
+          sum +
+          required.filter((index) => (pose[index]?.visibility ?? 0) > 0.3)
+            .length /
+            required.length,
+        0,
+      ) / good.length
+    : 0;
+  const legacy = diagnoseLegacy(samples);
+  const common = {
+    visibility: Math.round(visibility * 100),
+    frames: good.length,
+    knee: legacy.knee,
+    stance: legacy.stance,
+  };
+
+  if (good.length < 20 || visibility < 0.48)
+    return {
+      title: "暂时无法可靠判断",
+      summary:
+        "需要至少约 2 秒清晰的人体动作。请让头部、双脚和挥拍手完整入镜，避免逆光，并连续打 5–10 拍。",
+      cue: "先让全身和挥拍手完整入镜",
+      drill: "调整机位后录制 10–20 秒正手定点球",
+      confidence: "证据不足",
+      ...common,
+      swings: 0,
+      evidence: `记录到 ${good.length} 帧，关键身体点完整度 ${Math.round(visibility * 100)}%`,
+    };
+
+  const speeds = good.map((pose, index) => {
+    if (!index || (pose[wrist].visibility ?? 0) < 0.3) return 0;
+    const width = Math.max(0.035, pointDistance(pose[11], pose[12]));
+    return pointDistance(pose[wrist], good[index - 1][wrist]) / width;
+  });
+  const active = speeds.filter((speed) => speed > 0.08).sort((a, b) => a - b);
+  const threshold = Math.max(
+    0.18,
+    active[Math.floor(active.length * 0.72)] || 0,
+  );
+  const peaks: number[] = [];
+  speeds.forEach((speed, index) => {
+    if (
+      index >= 5 &&
+      index < good.length - 5 &&
+      speed >= threshold &&
+      speed >= (speeds[index - 1] || 0) &&
+      speed >= (speeds[index + 1] || 0) &&
+      (!peaks.length || index - peaks[peaks.length - 1] >= 7)
+    )
+      peaks.push(index);
+  });
+
+  if (!peaks.length)
+    return {
+      title: "没有找到完整的正手挥拍",
+      summary:
+        "人物已经识别，但挥拍手没有形成清晰的加速—随挥阶段。请连续打 5–10 拍，并让挥拍手始终留在画面内。",
+      cue: "连续挥拍，不要在动作中途走出画面",
+      drill: "录制 10–20 秒正手定点球",
+      confidence: "动作证据不足",
+      ...common,
+      swings: 0,
+      evidence: `识别到 ${good.length} 帧人体，但未找到腕部速度峰值`,
+    };
+
+  const metrics = peaks.map((peak) => {
+    const pre = good[peak - 4];
+    const hit = good[peak];
+    const post = good[peak + 4];
+    const width = Math.max(0.035, pointDistance(hit[11], hit[12]));
+    const preShoulder = midpoint(pre[11], pre[12]);
+    const hitShoulder = midpoint(hit[11], hit[12]);
+    const postShoulder = midpoint(post[11], post[12]);
+    const preHip = midpoint(pre[23], pre[24]);
+    const hitHip = midpoint(hit[23], hit[24]);
+    const postHip = midpoint(post[23], post[24]);
+    const wristMove =
+      (pointDistance(pre[wrist], hit[wrist]) +
+        pointDistance(hit[wrist], post[wrist])) /
+      width;
+    const torsoMove =
+      (pointDistance(preShoulder, hitShoulder) +
+        pointDistance(hitShoulder, postShoulder) +
+        pointDistance(preHip, hitHip) +
+        pointDistance(hitHip, postHip)) /
+      width;
+    const lean =
+      Math.max(Math.abs(hit[0].x - hitHip.x), Math.abs(post[0].x - postHip.x)) /
+      width;
+    const footMin = Math.min(post[27].x, post[28].x) - width * 0.12;
+    const footMax = Math.max(post[27].x, post[28].x) + width * 0.12;
+    const balanced = postHip.x >= footMin && postHip.x <= footMax;
+    const preRelative = pre[wrist].x - preShoulder.x;
+    const postRelative = post[wrist].x - postShoulder.x;
+    const crossed =
+      preRelative * postRelative < 0 && Math.abs(postRelative) / width > 0.12;
+    return {
+      armOnly: wristMove > 0.9 && torsoMove < 0.38,
+      unstable: !balanced || lean > 0.72,
+      unfinished: !(crossed && post[wrist].y < postHip.y),
+      lowTransfer: pointDistance(preHip, postHip) / width < 0.12,
+    };
+  });
+  const count = (key: keyof (typeof metrics)[number]) =>
+    metrics.filter((metric) => metric[key]).length;
+  const majority = Math.ceil(peaks.length * 0.55);
+  const result = { ...common, swings: peaks.length };
+
+  if (count("unstable") >= majority)
+    return {
+      title: "挥拍中身体侧倾，重心没有稳住",
+      summary: `${count("unstable")}/${peaks.length} 次挥拍在加速或随挥阶段出现头髋偏移过大、重心离开双脚支撑区。先稳住身体轴线，再追求挥拍速度。`,
+      cue: "头留在两脚之间，转体但不要倒向一侧",
+      drill: "3 组 × 8 次慢速挥拍，结束后定住 2 秒",
+      confidence: "中等置信度",
+      ...result,
+      evidence: `${count("unstable")}/${peaks.length} 拍出现侧倾或支撑区外重心`,
+    };
+  if (count("armOnly") >= majority)
+    return {
+      title: "挥拍主要由手臂带动",
+      summary: `${count("armOnly")}/${peaks.length} 次挥拍中，挥拍手移动明显，但肩和髋的协同位移较少。这通常会让动作费力、稳定性下降。`,
+      cue: "肩髋先带动，手臂跟着身体向前",
+      drill: "3 组 × 8 次夹毛巾转体影子挥拍",
+      confidence: "中等置信度",
+      ...result,
+      evidence: `${count("armOnly")}/${peaks.length} 拍腕部加速明显、躯干参与偏少`,
+    };
+  if (count("unfinished") >= majority)
+    return {
+      title: "随挥与身体转动没有完成",
+      summary: `${count("unfinished")}/${peaks.length} 次挥拍结束时，挥拍手没有清晰越过身体并停在较高位置。完整随挥有助于把力量送向目标。`,
+      cue: "由后向前，结束时肩髋面向目标",
+      drill: "3 组 × 8 次慢挥，拍手在对侧肩旁定住",
+      confidence: "中等置信度",
+      ...result,
+      evidence: `${count("unfinished")}/${peaks.length} 拍未形成跨体、高位随挥`,
+    };
+  if (side !== "后方" && count("lowTransfer") >= majority)
+    return {
+      title: "向前的重心传递不明显",
+      summary: `${count("lowTransfer")}/${peaks.length} 次挥拍的髋部从准备到随挥位移较少。侧方或斜后方机位更适合观察这一指标。`,
+      cue: "后脚加载，击球后重心落到前脚",
+      drill: "3 组 × 8 次跨步击球后定住",
+      confidence: "方向性判断",
+      ...result,
+      evidence: `${count("lowTransfer")}/${peaks.length} 拍髋部前后位移偏少`,
+    };
+
+  return {
+    ...legacy,
+    ...result,
+    title:
+      legacy.title === "准备与下肢支撑稳定"
+        ? "未发现反复出现的身体框架问题"
+        : legacy.title,
+    summary:
+      legacy.title === "准备与下肢支撑稳定"
+        ? `已比较 ${peaks.length} 次挥拍。当前尚未检测球拍，因此暂不判断“引拍大圈”、拍面和真实触球点。`
+        : legacy.summary,
+    evidence: `${peaks.length} 次挥拍已完成阶段比较；球拍轨迹暂未纳入`,
+  };
+}
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
   const [side, setSide] = useState<keyof typeof cameraGuides>("后方");
   const [focus, setFocus] = useState("正手稳定性");
+  const [hand, setHand] = useState<"right" | "left">("right");
   const [saved, setSaved] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [cameraError, setCameraError] = useState("");
@@ -233,7 +422,7 @@ export default function Home() {
       () => streamRef.current?.getTracks().forEach((t) => t.stop()),
       150,
     );
-    setAnalysisResult(diagnose(samplesRef.current));
+    setAnalysisResult(diagnose(samplesRef.current, hand, side));
     setScreen("analysis");
   }
 
@@ -246,9 +435,11 @@ export default function Home() {
       return;
     const video = videoRef.current;
     video.srcObject = streamRef.current;
-    video.play().catch(() =>
-      setCameraError("相机画面未能自动播放，请重新点击开始训练。"),
-    );
+    video
+      .play()
+      .catch(() =>
+        setCameraError("相机画面未能自动播放，请重新点击开始训练。"),
+      );
     let cancelled = false;
     const chunks: Blob[] = [];
     samplesRef.current = [];
@@ -281,7 +472,9 @@ export default function Home() {
     } catch {
       recorderRef.current = null;
       setRecordingStatus("录像失败");
-      setCameraError("当前浏览器不支持网页录像，请使用最新版 Safari 或 Chrome。");
+      setCameraError(
+        "当前浏览器不支持网页录像，请使用最新版 Safari 或 Chrome。",
+      );
     }
     timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
     (async () => {
@@ -379,8 +572,18 @@ export default function Home() {
         </div>
         <label className="field-label">你的惯用手</label>
         <div className="segmented">
-          <button className="active">右手</button>
-          <button>左手</button>
+          <button
+            className={hand === "right" ? "active" : ""}
+            onClick={() => setHand("right")}
+          >
+            右手
+          </button>
+          <button
+            className={hand === "left" ? "active" : ""}
+            onClick={() => setHand("left")}
+          >
+            左手
+          </button>
         </div>
         <label className="field-label">球源</label>
         <div className="segmented">
@@ -525,7 +728,8 @@ export default function Home() {
         <div className="rec-top">
           <button onClick={stopTraining}>×</button>
           <span>
-            <i /> {recordingStatus} · {String(Math.floor(seconds / 60)).padStart(2, "0")}:
+            <i /> {recordingStatus} ·{" "}
+            {String(Math.floor(seconds / 60)).padStart(2, "0")}:
             {String(seconds % 60).padStart(2, "0")}
           </span>
           <b>{samplesRef.current.length} 帧</b>
@@ -572,8 +776,8 @@ export default function Home() {
             <span>有效姿态帧</span>
           </div>
           <div>
-            <b>{analysisResult?.knee || "—"}</b>
-            <span>膝角中位数</span>
+            <b>{analysisResult?.swings || "—"}</b>
+            <span>识别挥拍</span>
           </div>
         </div>
         <section className="priority-card" onClick={() => setScreen("detail")}>
@@ -601,10 +805,13 @@ export default function Home() {
             <div className="cause">
               <span>完整入镜 {analysisResult?.visibility ?? 0}%</span>
               <i>·</i>
-              <span>站距 {analysisResult?.stance || "—"}</span>
+              <span>{analysisResult?.swings || 0} 次挥拍</span>
               <i>·</i>
               <b>{analysisResult?.frames ?? 0} 帧证据</b>
             </div>
+            {analysisResult?.evidence && (
+              <p className="evidence-line">证据：{analysisResult.evidence}</p>
+            )}
             <button>
               查看训练口令 <b>→</b>
             </button>
