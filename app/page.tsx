@@ -180,19 +180,26 @@ function diagnose(
   hand: "right" | "left",
   side: keyof typeof cameraGuides,
 ): Diagnosis {
-  const good = samples.filter((pose) => pose.length === 33);
+  const detected = samples.filter((pose) => pose.length === 33);
   const wrist = hand === "right" ? 16 : 15;
   const elbow = hand === "right" ? 14 : 13;
   const required = [0, 11, 12, 23, 24, 27, 28, wrist, elbow];
-  const visibility = good.length
-    ? good.reduce(
+  const visibleEnough = (pose: NormalizedLandmark[], indexes: number[]) =>
+    indexes.every((index) => (pose[index]?.visibility ?? 0) >= 0.15);
+  // Ball and racket are deliberately not required. A frame is usable for the
+  // body-framework diagnosis when the hitting arm and torso are trackable.
+  const good = detected.filter((pose) =>
+    visibleEnough(pose, [11, 12, 23, 24, wrist, elbow]),
+  );
+  const visibility = detected.length
+    ? detected.reduce(
         (sum, pose) =>
           sum +
           required.filter((index) => (pose[index]?.visibility ?? 0) > 0.3)
             .length /
             required.length,
         0,
-      ) / good.length
+      ) / detected.length
     : 0;
   const legacy = diagnoseLegacy(samples);
   const common = {
@@ -202,21 +209,20 @@ function diagnose(
     stance: legacy.stance,
   };
 
-  if (good.length < 20 || visibility < 0.48)
+  if (good.length < 12)
     return {
       title: "暂时无法可靠判断",
-      summary:
-        "需要至少约 2 秒清晰的人体动作。请让头部、双脚和挥拍手完整入镜，避免逆光，并连续打 5–10 拍。",
-      cue: "先让全身和挥拍手完整入镜",
-      drill: "调整机位后录制 10–20 秒正手定点球",
+      summary: `共识别到 ${detected.length} 帧人体，其中 ${good.length} 帧能同时看清挥拍手、手肘、肩和髋。球拍不必完整入镜；请等到画面显示“动作识别已就绪”后，再连续打 5–10 拍。`,
+      cue: "看到绿色骨架后再开始连续挥拍",
+      drill: "模型就绪后录制 15–20 秒正手定点球",
       confidence: "证据不足",
       ...common,
       swings: 0,
-      evidence: `记录到 ${good.length} 帧，关键身体点完整度 ${Math.round(visibility * 100)}%`,
+      evidence: `人体 ${detected.length} 帧；可分析挥拍 ${good.length} 帧；最低需要 12 帧`,
     };
 
   const speeds = good.map((pose, index) => {
-    if (!index || (pose[wrist].visibility ?? 0) < 0.3) return 0;
+    if (!index || (pose[wrist].visibility ?? 0) < 0.15) return 0;
     const width = Math.max(0.035, pointDistance(pose[11], pose[12]));
     return pointDistance(pose[wrist], good[index - 1][wrist]) / width;
   });
@@ -740,7 +746,12 @@ export default function Home() {
           <div className="live-card">
             <span>{recordingStatus} · 视频仅保存在本机</span>
             <b>{focus}</b>
-            <p>{cameraError || "绿色骨架出现时，动作才会进入诊断"}</p>
+            <p>
+              {cameraError ||
+                (recordingStatus.includes("已就绪")
+                  ? "现在开始挥拍 · 身体和挥拍手入镜即可，球拍可以出框"
+                  : "请等动作识别就绪；绿色骨架出现后再开始挥拍")}
+            </p>
           </div>
         </div>
         <div className="rec-bottom">
