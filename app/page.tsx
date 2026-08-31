@@ -62,6 +62,13 @@ type Diagnosis = {
   swings?: number;
   evidence?: string;
 };
+
+type AnalysisTelemetry = {
+  attempts: number;
+  modelState: string;
+  width: number;
+  height: number;
+};
 function angle(
   a: NormalizedLandmark,
   b: NormalizedLandmark,
@@ -179,6 +186,7 @@ function diagnose(
   samples: NormalizedLandmark[][],
   hand: "right" | "left",
   side: keyof typeof cameraGuides,
+  telemetry?: AnalysisTelemetry,
 ): Diagnosis {
   const detected = samples.filter((pose) => pose.length === 33);
   const wrist = hand === "right" ? 16 : 15;
@@ -208,6 +216,21 @@ function diagnose(
     knee: legacy.knee,
     stance: legacy.stance,
   };
+
+  if (!detected.length)
+    return {
+      title: "动作识别没有实际运行成功",
+      summary:
+        telemetry?.modelState === "ready" && telemetry.attempts > 0
+          ? `模型已经加载，并检查了 ${telemetry.attempts} 次画面，但没有检测到人体。请确认录像时绿色骨架确实出现；拍子是否入镜不影响人体检测。`
+          : "录像成功，但动作模型没有在录像期间完成加载或运行。这不是你的站位问题，请重新进入训练并等待“动作识别已就绪”。",
+      cue: "必须看到绿色骨架后再开始挥拍",
+      drill: "返回重试；若仍无骨架，记录下方运行证据",
+      confidence: "识别链路失败",
+      ...common,
+      swings: 0,
+      evidence: `模型 ${telemetry?.modelState || "unknown"}；分析调用 ${telemetry?.attempts || 0} 次；画面 ${telemetry?.width || 0}×${telemetry?.height || 0}`,
+    };
 
   if (good.length < 12)
     return {
@@ -372,8 +395,50 @@ export default function Home() {
     streamRef = useRef<MediaStream | null>(null),
     recorderRef = useRef<MediaRecorder | null>(null),
     samplesRef = useRef<NormalizedLandmark[][]>([]),
+    landmarkerRef = useRef<PoseLandmarker | null>(null),
+    modelPromiseRef = useRef<Promise<PoseLandmarker> | null>(null),
+    modelStateRef = useRef("idle"),
+    analysisAttemptsRef = useRef(0),
+    videoSizeRef = useRef({ width: 0, height: 0 }),
     timerRef = useRef<number | undefined>(undefined),
     rafRef = useRef<number | undefined>(undefined);
+
+  async function loadPoseModel() {
+    if (landmarkerRef.current) return landmarkerRef.current;
+    if (modelPromiseRef.current) return modelPromiseRef.current;
+    modelStateRef.current = "loading";
+    modelPromiseRef.current = (async () => {
+      const base = new URL("./", window.location.href).href;
+      const vision = await FilesetResolver.forVisionTasks(
+        new URL("mediapipe-wasm", base).href,
+      );
+      const landmarker = await PoseLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: new URL("pose_landmarker_lite.task", base).href,
+        },
+        runningMode: "VIDEO",
+        numPoses: 1,
+        minPoseDetectionConfidence: 0.2,
+        minPosePresenceConfidence: 0.2,
+        minTrackingConfidence: 0.2,
+      });
+      landmarkerRef.current = landmarker;
+      modelStateRef.current = "ready";
+      return landmarker;
+    })();
+    try {
+      return await modelPromiseRef.current;
+    } catch (error) {
+      modelStateRef.current = "error";
+      modelPromiseRef.current = null;
+      throw error;
+    }
+  }
+
+  useEffect(() => {
+    // Start the 16MB model/WASM download before the user opens the camera.
+    loadPoseModel().catch(() => undefined);
+  }, []);
 
   async function startTraining(target: Screen = "recording") {
     setCameraError("");
@@ -428,7 +493,14 @@ export default function Home() {
       () => streamRef.current?.getTracks().forEach((t) => t.stop()),
       150,
     );
-    setAnalysisResult(diagnose(samplesRef.current, hand, side));
+    setAnalysisResult(
+      diagnose(samplesRef.current, hand, side, {
+        attempts: analysisAttemptsRef.current,
+        modelState: modelStateRef.current,
+        width: videoSizeRef.current.width,
+        height: videoSizeRef.current.height,
+      }),
+    );
     setScreen("analysis");
   }
 
@@ -449,6 +521,8 @@ export default function Home() {
     let cancelled = false;
     const chunks: Blob[] = [];
     samplesRef.current = [];
+    analysisAttemptsRef.current = 0;
+    videoSizeRef.current = { width: 0, height: 0 };
     setSeconds(0);
     try {
       const recorder = createCompatibleRecorder(streamRef.current);
@@ -485,23 +559,10 @@ export default function Home() {
     timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
     (async () => {
       try {
-        const base = new URL("./", window.location.href).href;
         setRecordingStatus((status) =>
           status === "录像中" ? "录像中 · 正在加载动作识别" : status,
         );
-        const vision = await FilesetResolver.forVisionTasks(
-          new URL("mediapipe-wasm", base).href,
-        );
-        const landmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: new URL("pose_landmarker_lite.task", base).href,
-          },
-          runningMode: "VIDEO",
-          numPoses: 1,
-          minPoseDetectionConfidence: 0.25,
-          minPosePresenceConfidence: 0.25,
-          minTrackingConfidence: 0.25,
-        });
+        const landmarker = await loadPoseModel();
         setRecordingStatus((status) =>
           status.startsWith("录像中") ? "录像中 · 动作识别已就绪" : status,
         );
@@ -510,6 +571,11 @@ export default function Home() {
           if (cancelled) return;
           if (video.readyState >= 2 && performance.now() - last > 100) {
             last = performance.now();
+            analysisAttemptsRef.current += 1;
+            videoSizeRef.current = {
+              width: video.videoWidth,
+              height: video.videoHeight,
+            };
             const result = landmarker.detectForVideo(video, last);
             if (result.landmarks[0]) {
               samplesRef.current.push(result.landmarks[0]);
