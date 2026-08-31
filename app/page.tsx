@@ -437,11 +437,13 @@ export default function Home() {
   const [cameraError, setCameraError] = useState("");
   const [recordingStatus, setRecordingStatus] = useState("准备录像…");
   const [reviewVideoUrl, setReviewVideoUrl] = useState("");
+  const [exportStatus, setExportStatus] = useState("");
   const [analysisResult, setAnalysisResult] = useState<Diagnosis | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null),
     canvasRef = useRef<HTMLCanvasElement>(null),
     streamRef = useRef<MediaStream | null>(null),
     recorderRef = useRef<MediaRecorder | null>(null),
+    reviewBlobRef = useRef<Blob | null>(null),
     samplesRef = useRef<NormalizedLandmark[][]>([]),
     landmarkerRef = useRef<PoseDetector | null>(null),
     modelPromiseRef = useRef<Promise<PoseDetector> | null>(null),
@@ -487,6 +489,8 @@ export default function Home() {
     setRecordingStatus("准备录像…");
     if (reviewVideoUrl) URL.revokeObjectURL(reviewVideoUrl);
     setReviewVideoUrl("");
+    reviewBlobRef.current = null;
+    setExportStatus("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -502,25 +506,61 @@ export default function Home() {
       setCameraError("无法打开相机。请在浏览器设置中允许相机权限后重试。");
     }
   }
-  async function saveVideo(blob: Blob) {
-    return new Promise<void>((resolve, reject) => {
-      const req = indexedDB.open("rally-one", 1);
-      req.onupgradeneeded = () =>
-        req.result.createObjectStore("sessions", { keyPath: "id" });
-      req.onsuccess = () => {
-        const tx = req.result.transaction("sessions", "readwrite");
-        tx.objectStore("sessions").put({
-          id: Date.now(),
-          createdAt: new Date().toISOString(),
-          focus,
-          side,
-          blob,
-        });
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      };
-      req.onerror = () => reject(req.error);
+  function saveReviewResult(result: Diagnosis) {
+    try {
+      const key = "rally-one-reviews";
+      const previous = JSON.parse(localStorage.getItem(key) || "[]");
+      localStorage.setItem(
+        key,
+        JSON.stringify(
+          [
+            {
+              id: Date.now(),
+              createdAt: new Date().toISOString(),
+              focus,
+              side,
+              hand,
+              result,
+              nextPlan: { cue: result.cue, drill: result.drill },
+            },
+            ...(Array.isArray(previous) ? previous : []),
+          ].slice(0, 50),
+        ),
+      );
+    } catch {
+      setCameraError("复盘已生成，但本机未能保存复盘结果和训练计划。");
+    }
+  }
+
+  async function exportVideo() {
+    const blob = reviewBlobRef.current;
+    if (!blob) {
+      setExportStatus("本次视频仍在生成，请稍后再试");
+      return;
+    }
+    const extension = blob.type.includes("mp4") ? "mp4" : "webm";
+    const file = new File([blob], `RALLY-ONE-${Date.now()}.${extension}`, {
+      type: blob.type || `video/${extension}`,
     });
+    try {
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: "RALLY·ONE 训练视频",
+        });
+        setExportStatus("已打开系统菜单；请选择“存储视频”保存到相册");
+        return;
+      }
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = file.name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+      setExportStatus("视频已下载，请在“文件”中查看");
+    } catch (error) {
+      if ((error as Error).name !== "AbortError")
+        setExportStatus("没有完成保存，请重新点击后选择“存储视频”");
+    }
   }
   async function stopTraining() {
     if (recorderRef.current?.state === "recording") {
@@ -535,14 +575,14 @@ export default function Home() {
       () => streamRef.current?.getTracks().forEach((t) => t.stop()),
       150,
     );
-    setAnalysisResult(
-      diagnose(samplesRef.current, hand, side, {
-        attempts: analysisAttemptsRef.current,
-        modelState: modelStateRef.current,
-        width: videoSizeRef.current.width,
-        height: videoSizeRef.current.height,
-      }),
-    );
+    const result = diagnose(samplesRef.current, hand, side, {
+      attempts: analysisAttemptsRef.current,
+      modelState: modelStateRef.current,
+      width: videoSizeRef.current.width,
+      height: videoSizeRef.current.height,
+    });
+    setAnalysisResult(result);
+    saveReviewResult(result);
     setScreen("analysis");
   }
 
@@ -584,10 +624,8 @@ export default function Home() {
         const blob = new Blob(chunks, {
           type: recorder.mimeType || chunks[0].type || "video/mp4",
         });
+        reviewBlobRef.current = blob;
         setReviewVideoUrl(URL.createObjectURL(blob));
-        saveVideo(blob).catch(() =>
-          setCameraError("视频可以复盘，但本机长期保存失败。"),
-        );
       };
       recorder.start(1000);
       setRecordingStatus("录像中");
@@ -809,6 +847,10 @@ export default function Home() {
           <button className="cta" onClick={() => startTraining("recording")}>
             放好手机了，开始训练 <b>●</b>
           </button>
+          <p className="video-privacy-note">
+            录像只用于本次复盘，不上传，也不由 RALLY·ONE
+            保存。训练结束后可由你主动保存到相册。
+          </p>
           <button className="test-shot" onClick={() => startTraining("check")}>
             不确定画面？先试拍 3 秒检查 <span>可跳过</span>
           </button>
@@ -879,7 +921,7 @@ export default function Home() {
           <video ref={videoRef} muted playsInline />
           <canvas ref={canvasRef} />
           <div className="live-card">
-            <span>{recordingStatus} · 视频仅保存在本机</span>
+            <span>{recordingStatus} · 视频不上传，仅供本次复盘</span>
             <b>{focus}</b>
             <p>
               {cameraError ||
@@ -962,6 +1004,14 @@ export default function Home() {
               查看训练口令 <b>→</b>
             </button>
           </div>
+        </section>
+        <section className="video-export-card">
+          <div>
+            <b>训练原视频不会被 RALLY·ONE 保存</b>
+            <span>我们只在本机保留复盘结果和下一步训练计划。</span>
+          </div>
+          <button onClick={exportVideo}>保存到相册</button>
+          {exportStatus && <p>{exportStatus}</p>}
         </section>
         <h2 className="section-title">这一场也做得不错</h2>
         <div className="wins">
@@ -1153,7 +1203,7 @@ export default function Home() {
           <button>
             <i>▣</i>
             <span>训练视频管理</span>
-            <b>仅保存在本机</b>
+            <b>原视频不保存</b>
             <em>›</em>
           </button>
           <button>

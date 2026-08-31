@@ -275,6 +275,13 @@
   color: #8b948e;
   font-weight: 500;
 }
+.video-privacy-note {
+  margin: 10px 12px 0;
+  color: #718078;
+  font-size: 10px;
+  line-height: 1.55;
+  text-align: center;
+}
 .check-actions {
   height: 195px;
 }
@@ -1431,6 +1438,37 @@ nav button.active {
 .section-title {
   font-size: 18px;
   margin: 27px 0 13px;
+}
+.video-export-card {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #eef1e9;
+  display: grid;
+  gap: 11px;
+}
+.video-export-card div {
+  display: grid;
+  gap: 4px;
+}
+.video-export-card b {
+  font-size: 12px;
+}
+.video-export-card span,
+.video-export-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.video-export-card button {
+  border: 0;
+  border-radius: 11px;
+  background: var(--deep);
+  color: white;
+  padding: 12px;
+  font-weight: 800;
 }
 .wins {
   background: white;
