@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   DrawingUtils,
-  FilesetResolver,
   PoseLandmarker,
   type NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
@@ -409,9 +408,16 @@ export default function Home() {
     modelStateRef.current = "loading";
     modelPromiseRef.current = (async () => {
       const base = new URL("./", window.location.href).href;
-      const vision = await FilesetResolver.forVisionTasks(
-        new URL("mediapipe-wasm", base).href,
-      );
+      // Use the non-SIMD runtime deliberately. It is a little slower, but is
+      // substantially more reliable across iPhone/Safari versions and avoids
+      // a silent WebAssembly initialization hang on unsupported devices.
+      const wasmBase = new URL("mediapipe-wasm/", base);
+      const vision = {
+        wasmLoaderPath: new URL("vision_wasm_nosimd_internal.js", wasmBase)
+          .href,
+        wasmBinaryPath: new URL("vision_wasm_nosimd_internal.wasm", wasmBase)
+          .href,
+      };
       const landmarker = await PoseLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath: new URL("pose_landmarker_lite.task", base).href,
@@ -562,7 +568,16 @@ export default function Home() {
         setRecordingStatus((status) =>
           status === "录像中" ? "录像中 · 正在加载动作识别" : status,
         );
+        const loadingTimeout = window.setTimeout(() => {
+          if (modelStateRef.current !== "ready") {
+            setRecordingStatus("动作识别加载超时");
+            setCameraError(
+              "动作模型初始化超过 30 秒，已判定加载失败，不需要继续等待。请刷新页面后重试。",
+            );
+          }
+        }, 30000);
         const landmarker = await loadPoseModel();
+        window.clearTimeout(loadingTimeout);
         setRecordingStatus((status) =>
           status.startsWith("录像中") ? "录像中 · 动作识别已就绪" : status,
         );
