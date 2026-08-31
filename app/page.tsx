@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { SINGLEPOSE_LIGHTNING } from "@tensorflow-models/pose-detection/dist/movenet/constants";
+import { load as loadMoveNet } from "@tensorflow-models/pose-detection/dist/movenet/detector";
+import type { PoseDetector } from "@tensorflow-models/pose-detection/dist/pose_detector";
+import type { Keypoint } from "@tensorflow-models/pose-detection/dist/types";
+import * as tf from "@tensorflow/tfjs-core";
+import "@tensorflow/tfjs-backend-webgl";
 import {
   DrawingUtils,
   PoseLandmarker,
@@ -94,6 +100,49 @@ const midpoint = (a: NormalizedLandmark, b: NormalizedLandmark) =>
     z: 0,
     visibility: Math.min(a.visibility ?? 0, b.visibility ?? 0),
   }) as NormalizedLandmark;
+
+function moveNetToMediaPipe(
+  keypoints: Keypoint[],
+  width: number,
+  height: number,
+) {
+  const landmarks = Array.from({ length: 33 }, () => ({
+    x: 0,
+    y: 0,
+    z: 0,
+    visibility: 0,
+  })) as NormalizedLandmark[];
+  const mapping: Record<number, number> = {
+    0: 0,
+    1: 2,
+    2: 5,
+    3: 7,
+    4: 8,
+    5: 11,
+    6: 12,
+    7: 13,
+    8: 14,
+    9: 15,
+    10: 16,
+    11: 23,
+    12: 24,
+    13: 25,
+    14: 26,
+    15: 27,
+    16: 28,
+  };
+  keypoints.forEach((point, index) => {
+    const target = mapping[index];
+    if (target === undefined) return;
+    landmarks[target] = {
+      x: point.x / Math.max(1, width),
+      y: point.y / Math.max(1, height),
+      z: 0,
+      visibility: point.score ?? 0,
+    };
+  });
+  return landmarks;
+}
 
 function createCompatibleRecorder(stream: MediaStream) {
   const supportedType = [
@@ -394,8 +443,8 @@ export default function Home() {
     streamRef = useRef<MediaStream | null>(null),
     recorderRef = useRef<MediaRecorder | null>(null),
     samplesRef = useRef<NormalizedLandmark[][]>([]),
-    landmarkerRef = useRef<PoseLandmarker | null>(null),
-    modelPromiseRef = useRef<Promise<PoseLandmarker> | null>(null),
+    landmarkerRef = useRef<PoseDetector | null>(null),
+    modelPromiseRef = useRef<Promise<PoseDetector> | null>(null),
     modelStateRef = useRef("idle"),
     analysisAttemptsRef = useRef(0),
     videoSizeRef = useRef({ width: 0, height: 0 }),
@@ -408,25 +457,12 @@ export default function Home() {
     modelStateRef.current = "loading";
     modelPromiseRef.current = (async () => {
       const base = new URL("./", window.location.href).href;
-      // Use the non-SIMD runtime deliberately. It is a little slower, but is
-      // substantially more reliable across iPhone/Safari versions and avoids
-      // a silent WebAssembly initialization hang on unsupported devices.
-      const wasmBase = new URL("mediapipe-wasm/", base);
-      const vision = {
-        wasmLoaderPath: new URL("vision_wasm_nosimd_internal.js", wasmBase)
-          .href,
-        wasmBinaryPath: new URL("vision_wasm_nosimd_internal.wasm", wasmBase)
-          .href,
-      };
-      const landmarker = await PoseLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath: new URL("pose_landmarker_lite.task", base).href,
-        },
-        runningMode: "VIDEO",
-        numPoses: 1,
-        minPoseDetectionConfidence: 0.2,
-        minPosePresenceConfidence: 0.2,
-        minTrackingConfidence: 0.2,
+      await tf.setBackend("webgl");
+      await tf.ready();
+      const landmarker = await loadMoveNet({
+        modelType: SINGLEPOSE_LIGHTNING,
+        enableSmoothing: true,
+        modelUrl: new URL("movenet/model.json", base).href,
       });
       landmarkerRef.current = landmarker;
       modelStateRef.current = "ready";
@@ -442,7 +478,7 @@ export default function Home() {
   }
 
   useEffect(() => {
-    // Start the 16MB model/WASM download before the user opens the camera.
+    // Start the locally hosted WebGL pose model before the camera is opened.
     loadPoseModel().catch(() => undefined);
   }, []);
 
@@ -582,7 +618,7 @@ export default function Home() {
           status.startsWith("录像中") ? "录像中 · 动作识别已就绪" : status,
         );
         let last = 0;
-        const loop = () => {
+        const loop = async () => {
           if (cancelled) return;
           if (video.readyState >= 2 && performance.now() - last > 100) {
             last = performance.now();
@@ -591,9 +627,27 @@ export default function Home() {
               width: video.videoWidth,
               height: video.videoHeight,
             };
-            const result = landmarker.detectForVideo(video, last);
-            if (result.landmarks[0]) {
-              samplesRef.current.push(result.landmarks[0]);
+            let poses;
+            try {
+              poses = await landmarker.estimatePoses(video, {
+                flipHorizontal: false,
+              });
+            } catch {
+              modelStateRef.current = "inference-error";
+              setRecordingStatus("动作识别运行失败");
+              setCameraError(
+                "模型已经加载，但手机GPU未能完成动作分析。视频仍会正常保存。",
+              );
+              return;
+            }
+            if (cancelled) return;
+            if (poses[0]?.keypoints?.length) {
+              const landmarks = moveNetToMediaPipe(
+                poses[0].keypoints,
+                video.videoWidth,
+                video.videoHeight,
+              );
+              samplesRef.current.push(landmarks);
               const canvas = canvasRef.current;
               if (canvas) {
                 canvas.width = video.videoWidth;
@@ -602,7 +656,7 @@ export default function Home() {
                 if (ctx) {
                   ctx.clearRect(0, 0, canvas.width, canvas.height);
                   new DrawingUtils(ctx).drawConnectors(
-                    result.landmarks[0],
+                    landmarks,
                     PoseLandmarker.POSE_CONNECTIONS,
                     { color: "#c9f234", lineWidth: 3 },
                   );
